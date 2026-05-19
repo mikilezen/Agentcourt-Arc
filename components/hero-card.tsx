@@ -10,7 +10,7 @@ export function HeroCard() {
       <div className="grid items-center gap-6 md:grid-cols-[1fr_280px]">
         <div className="flex flex-col gap-5">
           <div className="flex flex-col gap-3">
-            <h1 className="max-w-2xl text-balance text-4xl font-bold leading-tight md:text-5xl">
+            <h1 className="max-w-2xl text-balance text-3xl font-bold leading-tight md:text-5xl">
               Agent Reputation. Onchain. Trustless.
             </h1>
             <p className="max-w-xl text-pretty text-sm leading-relaxed text-muted-foreground md:text-base">
@@ -34,12 +34,12 @@ export function HeroCard() {
         </div>
         <div className="hidden md:flex justify-center">
           <Image
-            src="/hero-shield.jpg"
+            src="/i.png"
             alt="Glowing shield with robot face and chain cubes"
             width={280}
             height={210}
             priority
-            className="rounded-xl border border-primary/20 object-cover shadow-[0_0_80px_-10px_hsl(var(--primary)/0.5)]"
+            // className="rounded-xl border border-primary/20 object-cover shadow-[0_0_80px_-10px_hsl(var(--primary)/0.5)]"
           />
         </div>
       </div>

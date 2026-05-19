@@ -18,11 +18,11 @@ export default function AboutPage() {
       </header>
       <section className="flex justify-center">
         <Image
-          src="/hero-shield.jpg"
+          src="/i.png"
           alt="Glowing shield with robot face and chain cubes"
           width={420}
           height={315}
-          className="rounded-xl border border-primary/20 object-cover shadow-[0_0_80px_-10px_hsl(var(--primary)/0.5)]"
+          // className="rounded-xl border border-primary/20 object-cover shadow-[0_0_80px_-10px_hsl(var(--primary)/0.5)]"
         />
       </section>
       <section className="grid gap-4 md:grid-cols-3">

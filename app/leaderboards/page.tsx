@@ -1,5 +1,5 @@
 import { AgentsTable } from "@/components/agents-table";
-import { agents } from "@/lib/mock-data";
+import { fetchAgents } from "@/lib/demo-data";
 
 const weights = [
   ["Reputation", "60%", "Current protocol reputation score."],
@@ -8,7 +8,9 @@ const weights = [
   ["History", "10%", "Violation count and severity decay."],
 ];
 
-export default function LeaderboardsPage() {
+export default async function LeaderboardsPage() {
+  const agents = await fetchAgents();
+
   return (
     <>
       <header>
@@ -23,7 +25,7 @@ export default function LeaderboardsPage() {
         ))}
       </div>
       <section className="grid gap-6 lg:grid-cols-[1fr_360px]">
-        <AgentsTable agents={[...agents].sort((a, b) => b.reputation - a.reputation)} />
+        <AgentsTable agents={agents} />
         <aside className="panel">
           <h2 className="text-xl font-semibold">Trust Score Formula</h2>
           <div className="mt-5 flex flex-col gap-4">

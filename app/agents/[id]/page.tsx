@@ -3,11 +3,15 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 
 import { AgentAvatar } from "@/components/agent-avatar";
-import { ReputationBadge, reputationTone } from "@/components/reputation-badge";
+import { reputationTone } from "@/components/reputation-badge";
 import { StatusBadge } from "@/components/status-badge";
 import { ViolationsTable } from "@/components/violations-table";
 import { formatExplorerUrl, formatUSDC, truncateAddress } from "@/lib/format";
-import { getAgentByAddress, transactions, violations } from "@/lib/mock-data";
+import {
+  buildTransactionsFromViolations,
+  fetchAgentById,
+  fetchViolationsByAgent,
+} from "@/lib/demo-data";
 
 interface AgentDetailsPageProps {
   params: Promise<{ id: string }>;
@@ -15,12 +19,12 @@ interface AgentDetailsPageProps {
 
 export default async function AgentDetailsPage({ params }: AgentDetailsPageProps) {
   const { id } = await params;
-  const agent = getAgentByAddress(id);
+  const agent = await fetchAgentById(id);
 
   if (!agent) notFound();
 
-  const scopedViolations = violations.filter((violation) => violation.agentAddress === agent.address);
-  const scopedTransactions = transactions.filter((tx) => tx.agentAddress === agent.address);
+  const scopedViolations = await fetchViolationsByAgent(id);
+  const scopedTransactions = buildTransactionsFromViolations(scopedViolations);
   const tone = reputationTone(agent.reputation);
 
   return (

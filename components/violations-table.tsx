@@ -4,7 +4,6 @@ import { ExternalLink } from "lucide-react";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { SeverityBadge } from "@/components/severity-badge";
 import { formatExplorerUrl, truncateAddress } from "@/lib/format";
-import { getAgentName } from "@/lib/mock-data";
 import { Violation } from "@/lib/types";
 
 export function ViolationsTable({ violations }: { violations: Violation[] }) {
@@ -33,7 +32,9 @@ export function ViolationsTable({ violations }: { violations: Violation[] }) {
                       <span className="block font-mono" title={violation.agentAddress}>
                         {truncateAddress(violation.agentAddress)}
                       </span>
-                      <span className="text-xs text-muted-foreground">{getAgentName(violation.agentAddress)}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {violation.agentName ?? "Unknown agent"}
+                      </span>
                     </div>
                   </div>
                 </td>

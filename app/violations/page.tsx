@@ -1,9 +1,11 @@
 import { ChevronDown, Search } from "lucide-react";
 
 import { ViolationsTable } from "@/components/violations-table";
-import { violations } from "@/lib/mock-data";
+import { fetchViolations } from "@/lib/demo-data";
 
-export default function ViolationsPage() {
+export default async function ViolationsPage() {
+  const violations = await fetchViolations();
+
   return (
     <>
       <header>

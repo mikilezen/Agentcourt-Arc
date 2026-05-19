@@ -19,6 +19,7 @@ export interface Agent {
 export interface Violation {
   id: string;
   agentAddress: string;
+  agentName?: string;
   reason: string;
   severity: Severity;
   reportedAt: string;

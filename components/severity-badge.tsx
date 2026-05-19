@@ -11,7 +11,7 @@ export function SeverityBadge({ severity, className }: { severity: Severity; cla
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold",
+        "inline-flex items-center rounded-[5px] border px-2.5 py-0.5 text-xs font-normal",
         severity === "high" && "border-destructive/30 bg-destructive/10 text-destructive",
         severity === "medium" && "border-warning/30 bg-warning/10 text-warning",
         severity === "low" && "border-info/30 bg-info/10 text-info",

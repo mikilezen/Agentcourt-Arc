@@ -1,0 +1,119 @@
+[
+  {
+    "type": "function",
+    "name": "registerAgent",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      { "name": "stakeAmount", "type": "uint256" },
+      { "name": "metadataURI", "type": "string" }
+    ],
+    "outputs": [{ "name": "agentId", "type": "uint256" }]
+  },
+  {
+    "type": "function",
+    "name": "reportViolation",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      { "name": "agentId", "type": "uint256" },
+      { "name": "violationType", "type": "string" },
+      { "name": "severity", "type": "uint8" },
+      { "name": "evidenceHash", "type": "bytes32" }
+    ],
+    "outputs": [{ "name": "slashAmount", "type": "uint256" }]
+  },
+  {
+    "type": "function",
+    "name": "getAgentProfile",
+    "stateMutability": "view",
+    "inputs": [{ "name": "agentId", "type": "uint256" }],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "components": [
+          { "name": "owner", "type": "address" },
+          { "name": "metadataURI", "type": "string" },
+          { "name": "stake", "type": "uint256" },
+          { "name": "reputation", "type": "uint256" },
+          { "name": "totalViolations", "type": "uint256" },
+          { "name": "totalSlashed", "type": "uint256" },
+          { "name": "status", "type": "uint8" }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "function",
+    "name": "getViolationCount",
+    "stateMutability": "view",
+    "inputs": [{ "name": "agentId", "type": "uint256" }],
+    "outputs": [{ "name": "", "type": "uint256" }]
+  },
+  {
+    "type": "function",
+    "name": "getViolation",
+    "stateMutability": "view",
+    "inputs": [
+      { "name": "agentId", "type": "uint256" },
+      { "name": "index", "type": "uint256" }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "components": [
+          { "name": "violationType", "type": "string" },
+          { "name": "severity", "type": "uint8" },
+          { "name": "evidenceHash", "type": "bytes32" },
+          { "name": "slashAmount", "type": "uint256" },
+          { "name": "timestamp", "type": "uint256" }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "AgentRegistered",
+    "inputs": [
+      { "name": "agentId", "type": "uint256", "indexed": true },
+      { "name": "owner", "type": "address", "indexed": true },
+      { "name": "metadataURI", "type": "string", "indexed": false },
+      { "name": "stake", "type": "uint256", "indexed": false }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ViolationReported",
+    "inputs": [
+      { "name": "agentId", "type": "uint256", "indexed": true },
+      { "name": "reporter", "type": "address", "indexed": true },
+      { "name": "violationType", "type": "string", "indexed": false },
+      { "name": "severity", "type": "uint8", "indexed": false },
+      { "name": "evidenceHash", "type": "bytes32", "indexed": false },
+      { "name": "slashAmount", "type": "uint256", "indexed": false },
+      { "name": "timestamp", "type": "uint256", "indexed": false }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "AgentSlashed",
+    "inputs": [
+      { "name": "agentId", "type": "uint256", "indexed": true },
+      { "name": "slashAmount", "type": "uint256", "indexed": false },
+      { "name": "remainingStake", "type": "uint256", "indexed": false }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ReputationUpdated",
+    "inputs": [
+      { "name": "agentId", "type": "uint256", "indexed": true },
+      { "name": "previousReputation", "type": "uint256", "indexed": false },
+      { "name": "newReputation", "type": "uint256", "indexed": false }
+    ],
+    "anonymous": false
+  }
+]
