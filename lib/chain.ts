@@ -1,4 +1,4 @@
-import { defineChain } from "viem";
+import { createPublicClient, defineChain, http } from "viem";
 
 const rpcUrl = process.env.NEXT_PUBLIC_ARC_TESTNET_RPC_URL ?? "https://rpc.alta.testnet.arc";
 const explorerUrl = process.env.NEXT_PUBLIC_ARC_TESTNET_EXPLORER_URL ?? "https://explorer.alta.testnet.arc";
@@ -23,4 +23,9 @@ export const arcTestnet = defineChain({
     },
   },
   testnet: true,
+});
+
+export const publicClient = createPublicClient({
+  chain: arcTestnet,
+  transport: http(),
 });
