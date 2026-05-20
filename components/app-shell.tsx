@@ -11,7 +11,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="flex min-h-screen">
-        <div className="hidden lg:block">
+        <div className="hidden lg:block h-screen sticky top-0 flex-shrink-0">
           <Sidebar />
         </div>
 

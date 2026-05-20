@@ -38,21 +38,96 @@ const iconMap: Record<DocQuickLink["icon"], typeof ExternalLink> = {
   Code2,
 };
 
-export default async function DocsPage() {
-  const content = await fetchDemoContent<DocsPageContent>("docs_page");
+const LOCAL_FALLBACK_CONTENT: DocsPageContent = {
+  title: "Documentation",
+  subtitle: "Integration notes for protocol consumers, validators, and frontend builders.",
+  sections: [
+    {
+      id: "introduction",
+      title: "Introduction",
+      body: "AgentCourt Arc tracks agent stake, reputation, violation reports, and slashing on Arc Testnet. Every value should map to a wallet address, transaction hash, or timestamp.",
+    },
+    {
+      id: "smart-contract",
+      title: "Smart Contract",
+      parts: [
+        { type: "text", value: "Registration starts with " },
+        { type: "code", value: "approve(usdc, amount)" },
+        { type: "text", value: ", then calls " },
+        { type: "code", value: "registerAgent(amount, metadata)" },
+        { type: "text", value: "." },
+      ],
+    },
+    {
+      id: "api-reference",
+      title: "API Reference",
+      body: "The demo API exposes a single read/write surface for the UI.",
+      bullets: [
+        "GET /api/demo-flow returns state, agents, and violations.",
+        "POST /api/demo-flow accepts actions like connect_wallet and register_metatrader.",
+      ],
+    },
+    {
+      id: "events",
+      title: "Events",
+      parts: [
+        { type: "text", value: "Listen for " },
+        { type: "code", value: "AgentRegistered" },
+        { type: "text", value: ", " },
+        { type: "code", value: "ViolationReported" },
+        { type: "text", value: ", and " },
+        { type: "code", value: "StakeSlashed" },
+        { type: "text", value: "." },
+      ],
+    },
+    {
+      id: "frontend-guide",
+      title: "Frontend Guide",
+      body: "Keep the table and badge components unchanged; only swap the data source.",
+      bullets: [
+        "Use lib/demo-data.ts for agents and violations.",
+        "Persist content copy in agentcourt_demo_content.",
+      ],
+    },
+    {
+      id: "faqs",
+      title: "FAQs",
+      body: "Scores are visible, stake is denominated in USDC, and slashes redirect to an Arc explorer transaction.",
+    },
+  ],
+  quickLinks: [
+    {
+      title: "Smart Contract",
+      label: "View contract on Explorer",
+      href: "https://explorer-testnet.arc.network",
+      icon: "ExternalLink",
+    },
+    {
+      title: "GitHub Repo",
+      label: "View source code",
+      href: "/",
+      icon: "Code2",
+    },
+  ],
+};
 
-  if (!content) {
-    notFound();
+export default async function DocsPage() {
+  let content: DocsPageContent | null = null;
+  try {
+    content = await fetchDemoContent<DocsPageContent>("docs_page");
+  } catch (err) {
+    console.warn("Failed to fetch docs_page content from database, using high-quality local fallback:", err);
   }
 
-  const sections = content.sections ?? [];
+  const finalContent = content || LOCAL_FALLBACK_CONTENT;
+  const sections = finalContent.sections ?? [];
 
   return (
     <>
       <header>
-        <h1 className="text-balance text-3xl font-semibold leading-tight">{content.title}</h1>
+        <h1 className="text-balance text-3xl font-semibold leading-tight">{finalContent.title}</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          {content.subtitle}
+          {finalContent.subtitle}
         </p>
       </header>
       <section className="grid gap-6 lg:grid-cols-[240px_1fr]">
@@ -97,7 +172,7 @@ export default async function DocsPage() {
             </div>
           ))}
           <div className="mt-8 grid gap-4 md:grid-cols-2">
-            {content.quickLinks.map((link) => (
+            {finalContent.quickLinks.map((link) => (
               <QuickLink
                 key={link.title}
                 icon={iconMap[link.icon] ?? ExternalLink}
