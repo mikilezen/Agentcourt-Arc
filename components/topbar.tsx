@@ -3,37 +3,44 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, Menu, Moon } from "lucide-react";
 
+import { useAccount, useConnect, useDisconnect } from "wagmi";
+import { injected } from "wagmi/connectors";
+
 import { AgentAvatar } from "@/components/agent-avatar";
 import { Button } from "@/components/ui/button";
 import { truncateAddress } from "@/lib/format";
 
 export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
-  const defaultAddress = "0x0c9A8B125aB722A518C6d6f94714a52C8886b26A";
-  const [address, setAddress] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const { address, isConnected } = useAccount();
+  const { connectAsync, isPending: isConnecting } = useConnect();
+  const { disconnectAsync } = useDisconnect();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
-  const loadWallet = useCallback(async () => {
-    try {
-      const response = await fetch("/api/demo-flow", { cache: "no-store" });
-      const data = await response.json();
-
-      if (!response.ok || !data.ok) {
-        return;
-      }
-
-      const connectedWallet = (data.snapshot?.state?.connected_wallet as string | null | undefined) ?? null;
-      setAddress(connectedWallet);
-    } catch {
-      // no-op for topbar wallet preview
-    }
-  }, []);
-
+  // Sync wallet connection status with database state
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadWallet();
-  }, [loadWallet]);
+    if (isConnected && address) {
+      void fetch("/api/demo-flow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "connect_wallet",
+          walletAddress: address,
+        }),
+      }).then(() => {
+        window.dispatchEvent(new CustomEvent("agentcourt:wallet-connected"));
+      });
+    } else if (!isConnected) {
+      void fetch("/api/demo-flow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "disconnect_wallet" }),
+      }).then(() => {
+        window.dispatchEvent(new CustomEvent("agentcourt:wallet-connected"));
+      });
+    }
+  }, [address, isConnected]);
 
   useEffect(() => {
     if (!menuOpen) {
@@ -57,34 +64,25 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   }, [menuOpen]);
 
   const connectWallet = useCallback(async () => {
-    setLoading(true);
-
+    setError(null);
     try {
-      const response = await fetch("/api/demo-flow", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "connect_wallet",
-          walletAddress: defaultAddress,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || !data.ok) {
-        throw new Error(data.error ?? "Failed to connect wallet.");
-      }
-
-      const connectedWallet = (data.snapshot?.state?.connected_wallet as string | null | undefined) ?? defaultAddress;
-      setAddress(connectedWallet);
+      await connectAsync({ connector: injected() });
       setMenuOpen(false);
-      window.dispatchEvent(new CustomEvent("agentcourt:wallet-connected"));
-    } catch {
-      // no-op for topbar button
-    } finally {
-      setLoading(false);
+    } catch (caughtError) {
+      console.error("Failed to connect wallet:", caughtError);
+      const errMsg = caughtError instanceof Error ? caughtError.message : String(caughtError);
+      if (
+        errMsg.includes("Connector not found") ||
+        errMsg.includes("Provider not found") ||
+        caughtError?.constructor?.name === "ProviderNotFoundError" ||
+        caughtError?.constructor?.name === "ConnectorNotFoundError"
+      ) {
+        setError("Web3 wallet not found. Please install MetaMask or another extension.");
+      } else {
+        setError("Connection failed. Please try again.");
+      }
     }
-  }, []);
+  }, [connectAsync]);
 
   const handleCopyAddress = useCallback(() => {
     if (!address) {
@@ -100,25 +98,13 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
 
   const handleLogout = useCallback(async () => {
     try {
-      const response = await fetch("/api/demo-flow", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "disconnect_wallet" }),
-      });
-
-      const data = await response.json();
-      if (!response.ok || !data.ok) {
-        throw new Error(data.error ?? "Failed to disconnect wallet.");
-      }
-
-      setAddress(null);
-      window.dispatchEvent(new CustomEvent("agentcourt:wallet-connected"));
-    } catch {
-      // no-op for topbar menu action
+      await disconnectAsync();
+    } catch (error) {
+      console.error("Failed to disconnect wallet:", error);
     } finally {
       setMenuOpen(false);
     }
-  }, []);
+  }, [disconnectAsync]);
 
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/90 backdrop-blur">
@@ -169,9 +155,16 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
               ) : null}
             </div>
           ) : (
-            <Button onClick={() => void connectWallet()} disabled={loading}>
-              {loading ? "Connecting..." : "Connect Wallet"}
-            </Button>
+            <div className="flex flex-col items-end gap-1">
+              <Button onClick={() => void connectWallet()} disabled={isConnecting}>
+                {isConnecting ? "Connecting..." : "Connect Wallet"}
+              </Button>
+              {error ? (
+                <span className="text-[10px] font-semibold text-destructive max-w-[200px] text-right">
+                  {error}
+                </span>
+              ) : null}
+            </div>
           )}
         </div>
       </div>
