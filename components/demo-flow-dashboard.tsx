@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
+import { useAccount } from "wagmi";
+
 import { AgentsTable } from "@/components/agents-table";
 import { BuildTrustBanner } from "@/components/build-trust-banner";
 import { HeroCard } from "@/components/hero-card";
@@ -90,10 +92,58 @@ function mapApiViolation(v: ApiSnapshot["violations"][number]): Violation {
 }
 
 export function DemoFlowDashboard() {
+  const { address: connectedAddress, isConnected } = useAccount();
   const [snapshot, setSnapshot] = useState<ApiSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [agentCourtAddressInput, setAgentCourtAddressInput] = useState("");
+  const [agentCourtAddress, setAgentCourtAddress] = useState<`0x${string}` | undefined>(undefined);
+
+  // Resolve contract address
+  const resolveContracts = useCallback(() => {
+    let resolved: `0x${string}` | undefined;
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage.getItem("agentcourt_contract_address");
+      if (stored && stored.startsWith("0x")) {
+        resolved = stored as `0x${string}`;
+      }
+    }
+    if (!resolved) {
+      resolved = process.env.NEXT_PUBLIC_AGENT_COURT_ADDRESS as `0x${string}` | undefined;
+    }
+    setAgentCourtAddress(resolved);
+    if (resolved) {
+      setAgentCourtAddressInput(resolved);
+    }
+  }, []);
+
+  useEffect(() => {
+    resolveContracts();
+  }, [resolveContracts]);
+
+  const handleSaveContractAddress = useCallback(() => {
+    setError(null);
+    if (typeof window === "undefined") return;
+
+    const trimmed = agentCourtAddressInput.trim();
+    if (!trimmed) {
+      window.localStorage.removeItem("agentcourt_contract_address");
+      resolveContracts();
+      window.dispatchEvent(new CustomEvent("agentcourt:contracts-deployed"));
+      return;
+    }
+
+    if (!trimmed.startsWith("0x") || trimmed.length !== 42) {
+      setError("Invalid Ethereum contract address format.");
+      return;
+    }
+
+    window.localStorage.setItem("agentcourt_contract_address", trimmed);
+    resolveContracts();
+    window.dispatchEvent(new CustomEvent("agentcourt:contracts-deployed"));
+  }, [agentCourtAddressInput, resolveContracts]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -198,13 +248,51 @@ export function DemoFlowDashboard() {
   }, [agents, snapshot]);
 
   const metatrader = agents.find((agent) => agent.name === "MetaTrader AI");
-  const walletConnected = Boolean(snapshot?.state.wallet_connected);
+  const walletConnected = isConnected || Boolean(snapshot?.state.wallet_connected);
 
   return (
     <>
       <HeroCard />
 
+      {/* Developer Contract Configuration Panel */}
       <section className="panel space-y-4">
+        <h2 className="text-lg font-semibold">Developer Settings</h2>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="flex flex-col gap-2">
+            <span className="text-xs text-muted-foreground">AgentCourt Contract Address (Arc Testnet)</span>
+            <div className="flex gap-2">
+              <input
+                className="h-10 flex-1 rounded-lg border border-input bg-background px-3 font-mono text-sm outline-none"
+                value={agentCourtAddressInput}
+                onChange={(e) => setAgentCourtAddressInput(e.target.value)}
+                placeholder="0x..."
+              />
+              <Button size="sm" onClick={handleSaveContractAddress}>
+                Save
+              </Button>
+            </div>
+            <span className="text-[10px] text-muted-foreground">
+              If not configured, the interface relies on the offline simulator state.
+            </span>
+          </div>
+          <div className="flex flex-col justify-center rounded-lg border border-border bg-background/40 p-3 text-xs space-y-1">
+            <p>
+              Status:{" "}
+              <span className={agentCourtAddress ? "text-success font-semibold" : "text-warning font-semibold"}>
+                {agentCourtAddress ? "Real Web3 Mode Active" : "Offline Simulator Fallback"}
+              </span>
+            </p>
+            {agentCourtAddress && (
+              <p>
+                Connected Address: <span className="font-mono">{agentCourtAddress}</span>
+              </p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="panel space-y-4">
+        <h2 className="text-lg font-semibold">Agent Simulator & Middleware Controls</h2>
         <div className="grid gap-3 md:grid-cols-3">
           <Button
             disabled={actionLoading || !walletConnected}
@@ -231,7 +319,7 @@ export function DemoFlowDashboard() {
 
         <div className="grid gap-2 rounded-lg border border-border bg-background/40 p-3 text-sm">
           <p>
-            Wallet: <span className="font-mono">{snapshot?.state.connected_wallet ?? "not connected"}</span>
+            Wallet: <span className="font-mono">{connectedAddress ?? snapshot?.state.connected_wallet ?? "not connected"}</span>
           </p>
           <p>
             Middleware: <span className="font-semibold">{snapshot?.state.middleware_status ?? "idle"}</span>
@@ -252,6 +340,7 @@ export function DemoFlowDashboard() {
         ) : null}
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
       </section>
+
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (
