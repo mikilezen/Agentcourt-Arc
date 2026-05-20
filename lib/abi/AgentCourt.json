@@ -115,5 +115,19 @@
       { "name": "newReputation", "type": "uint256", "indexed": false }
     ],
     "anonymous": false
+  },
+  {
+    "type": "function",
+    "name": "agentIdOfOwner",
+    "stateMutability": "view",
+    "inputs": [{ "name": "owner", "type": "address" }],
+    "outputs": [{ "name": "", "type": "uint256" }]
+  },
+  {
+    "type": "function",
+    "name": "usdc",
+    "stateMutability": "view",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "address" }]
   }
 ]
