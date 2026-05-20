@@ -1,4 +1,4 @@
-import Image from "next/image";
+import { DemoFlowDashboard } from "@/components/demo-flow-dashboard";
 
 export default function Home() {
   return (
