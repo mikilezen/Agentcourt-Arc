@@ -107,6 +107,71 @@ function mapViolationRow(row: ViolationRow): Violation {
   };
 }
 
+import { getAddress } from "viem";
+import { publicClient } from "@/lib/chain";
+import { AGENT_COURT_ABI } from "@/lib/abi";
+
+const agentCourtAddress = process.env.NEXT_PUBLIC_AGENT_COURT_ADDRESS as string | undefined;
+
+function isValidAddress(addr?: string): boolean {
+  if (!addr) {
+    return false;
+  }
+  return addr.startsWith("0x") && addr.length === 42;
+}
+
+async function enrichAgentWithOnChain(agent: Agent): Promise<Agent> {
+  if (!agentCourtAddress || !isValidAddress(agentCourtAddress) || !isValidAddress(agent.owner)) {
+    return agent;
+  }
+
+  try {
+    const cleanAgentCourt = getAddress(agentCourtAddress);
+    const cleanOwner = getAddress(agent.owner);
+
+    // 1. Get agentId of the owner
+    const agentId = await publicClient.readContract({
+      address: cleanAgentCourt,
+      abi: AGENT_COURT_ABI,
+      functionName: "agentIdOfOwner",
+      args: [cleanOwner],
+    });
+
+    if (agentId === BigInt(0)) {
+      return agent;
+    }
+
+    // 2. Get profile
+    const profile = (await publicClient.readContract({
+      address: cleanAgentCourt,
+      abi: AGENT_COURT_ABI,
+      functionName: "getAgentProfile",
+      args: [agentId],
+    })) as [string, string, bigint, bigint, bigint, bigint, number];
+
+    const [owner, , stake, reputation, totalViolations, , statusNum] = profile;
+
+    let status: AgentStatus = "active";
+    if (statusNum === 2) {
+      status = "slashed";
+    } else if (statusNum === 1 && totalViolations > BigInt(0)) {
+      status = "at-risk";
+    }
+
+    return {
+      ...agent,
+      owner,
+      stakedUsdc: Number(stake) / 1e6,
+      reputation: Number(reputation),
+      violations: Number(totalViolations),
+      status,
+    };
+  } catch (error) {
+    console.error(`Failed to enrich agent ${agent.address} on-chain:`, error);
+    return agent;
+  }
+}
+
 export async function fetchAgents(): Promise<Agent[]> {
   const supabase = getSupabaseServerClient();
   const result = await supabase
@@ -119,7 +184,9 @@ export async function fetchAgents(): Promise<Agent[]> {
     throw result.error;
   }
 
-  return (result.data ?? []).map(mapAgentRow);
+  const dbAgents = (result.data ?? []).map(mapAgentRow);
+  const enriched = await Promise.all(dbAgents.map((agent) => enrichAgentWithOnChain(agent)));
+  return enriched;
 }
 
 export async function fetchAgentById(id: string): Promise<Agent | null> {
@@ -136,7 +203,12 @@ export async function fetchAgentById(id: string): Promise<Agent | null> {
     throw result.error;
   }
 
-  return result.data ? mapAgentRow(result.data) : null;
+  if (!result.data) {
+    return null;
+  }
+
+  const agent = mapAgentRow(result.data);
+  return enrichAgentWithOnChain(agent);
 }
 
 export async function fetchViolations(): Promise<Violation[]> {
