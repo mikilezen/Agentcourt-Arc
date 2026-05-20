@@ -71,6 +71,41 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
   const usdcBalance = rawBalance ? Number(rawBalance) / 1e6 : 0;
 
+  const [totalStaked, setTotalStaked] = useState<number>(0);
+
+  // Fetch total staked from demo-flow API
+  const fetchTotalStaked = useCallback(async () => {
+    try {
+      const response = await fetch("/api/demo-flow", { cache: "no-store" });
+      const data = await response.json();
+      if (data?.ok && data?.snapshot?.agents) {
+        const sum = data.snapshot.agents.reduce(
+          (acc: number, agent: any) => acc + (Number(agent.staked_usdc) || 0),
+          0
+        );
+        setTotalStaked(sum);
+      }
+    } catch (err) {
+      console.error("Failed to fetch total staked for sidebar:", err);
+    }
+  }, []);
+
+  // Fetch on mount, event triggers, and periodically
+  useEffect(() => {
+    void fetchTotalStaked();
+
+    window.addEventListener("agentcourt:wallet-connected", fetchTotalStaked);
+    window.addEventListener("agentcourt:contracts-deployed", fetchTotalStaked);
+
+    const interval = setInterval(fetchTotalStaked, 3000);
+
+    return () => {
+      window.removeEventListener("agentcourt:wallet-connected", fetchTotalStaked);
+      window.removeEventListener("agentcourt:contracts-deployed", fetchTotalStaked);
+      clearInterval(interval);
+    };
+  }, [fetchTotalStaked]);
+
   // Mint USDC action
   const { writeContractAsync: mintUsdc, isPending: isRequestingMint } = useWriteContract();
   const { isLoading: isWaitingForMint } = useWaitForTransactionReceipt({ hash: mintTxHash });
@@ -108,9 +143,10 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   useEffect(() => {
     if (mintTxHash && !isWaitingForMint) {
       void refetchBalance();
+      void fetchTotalStaked();
       setMintTxHash(undefined);
     }
-  }, [mintTxHash, isWaitingForMint, refetchBalance]);
+  }, [mintTxHash, isWaitingForMint, refetchBalance, fetchTotalStaked]);
 
   return (
     <aside className="flex h-full w-64 flex-col border-r border-border bg-background p-4">
@@ -166,10 +202,10 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             <p className="text-xs">USDC Balance</p>
           </div>
           <p className="mt-3 font-mono text-2xl font-bold">
-            {address ? `${usdcBalance.toFixed(2)} USDC` : "— USDC"}
+            {totalStaked.toFixed(2)} USDC
           </p>
           <p className="mt-1 font-mono text-xs text-muted-foreground">
-            {address ? `~ $${usdcBalance.toFixed(2)}` : "~ $0.00"}
+            ~ ${totalStaked.toFixed(1)}
           </p>
           <Button
             variant="secondary"
