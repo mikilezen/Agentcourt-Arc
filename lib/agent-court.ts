@@ -3,10 +3,10 @@
 import { useMemo } from "react";
 import { useReadContracts, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { type Abi, type Address, type Hash, keccak256, toHex } from "viem";
-import agentCourtAbiJson from "@/lib/abi/AgentCourt.json";
+import { AGENT_COURT_ABI } from "./abi";
 import { arcTestnet } from "@/lib/chain";
 
-export const AGENT_COURT_ABI = agentCourtAbiJson as Abi;
+export { AGENT_COURT_ABI };
 export const ARC_TESTNET_CHAIN_ID = arcTestnet.id;
 
 export type AgentCourtAddress = Address;
@@ -53,7 +53,16 @@ type HookAddressState = {
 };
 
 function resolveContractAddress(address?: Address): HookAddressState {
-  const resolved = address ?? process.env.NEXT_PUBLIC_AGENT_COURT_ADDRESS;
+  let resolved = address;
+  if (!resolved && typeof window !== "undefined") {
+    const stored = window.localStorage.getItem("agentcourt_contract_address");
+    if (stored && stored.startsWith("0x")) {
+      resolved = stored as Address;
+    }
+  }
+  if (!resolved) {
+    resolved = process.env.NEXT_PUBLIC_AGENT_COURT_ADDRESS as Address | undefined;
+  }
 
   if (!resolved) {
     return {
@@ -61,7 +70,7 @@ function resolveContractAddress(address?: Address): HookAddressState {
     };
   }
 
-  return { address: resolved as Address, error: null };
+  return { address: resolved, error: null };
 }
 
 function toHash(value: string): Hash {
