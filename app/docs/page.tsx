@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { ArrowRight, ChevronRight, Code2, ExternalLink } from "lucide-react";
 
 import { fetchDemoContent } from "@/lib/demo-content";
@@ -39,60 +38,65 @@ const iconMap: Record<DocQuickLink["icon"], typeof ExternalLink> = {
 };
 
 const LOCAL_FALLBACK_CONTENT: DocsPageContent = {
-  title: "Documentation",
-  subtitle: "Integration notes for protocol consumers, validators, and frontend builders.",
+  title: "AgentCourt Builder Documentation",
+  subtitle: "Set up AgentCourt, connect your agent through the SDK, persist runtime state in Supabase, and deploy Web3 mode on Arc.",
   sections: [
     {
       id: "introduction",
-      title: "Introduction",
-      body: "AgentCourt Arc tracks agent stake, reputation, violation reports, and slashing on Arc Testnet. Every value should map to a wallet address, transaction hash, or timestamp.",
+      title: "What AgentCourt Does",
+      body: "AgentCourt is the trust and enforcement layer for autonomous agents. Your agent calls the SDK before risky actions, AgentCourt evaluates policy, and the dashboard records allowed actions, approvals, blocked calls, evidence hashes, reputation, stake, and violations.",
     },
     {
-      id: "smart-contract",
-      title: "Smart Contract",
+      id: "setup",
+      title: "Local Setup",
       parts: [
-        { type: "text", value: "Registration starts with " },
-        { type: "code", value: "approve(usdc, amount)" },
-        { type: "text", value: ", then calls " },
-        { type: "code", value: "registerAgent(amount, metadata)" },
-        { type: "text", value: "." },
+        { type: "code", value: "cd AgentCourt-Arc && npm install && npm run dev" },
+        { type: "text", value: " starts the dashboard at http://localhost:3000. On Windows PowerShell, use " },
+        { type: "code", value: "npm.cmd run dev" },
+        { type: "text", value: " if script execution policy blocks npm." },
       ],
     },
     {
-      id: "api-reference",
-      title: "API Reference",
-      body: "The demo API exposes a single read/write surface for the UI.",
+      id: "environment",
+      title: "Environment",
+      body: "Set Supabase, Arc RPC, explorer, and deployed contract values in .env. Keep SUPABASE_SERVICE_ROLE_KEY server-only.",
+      bullets: [
+        "NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY power the client.",
+        "SUPABASE_SERVICE_ROLE_KEY is used only by server routes.",
+        "NEXT_PUBLIC_AGENT_COURT_ADDRESS enables real Web3 mode.",
+        "NEXT_PUBLIC_ARC_TESTNET_RPC_URL controls Arc RPC connectivity.",
+      ],
+    },
+    {
+      id: "sdk",
+      title: "Connect An Agent",
+      parts: [
+        { type: "text", value: "Import " },
+        { type: "code", value: "AgentCourtOrchestrator" },
+        { type: "text", value: " and wrap every risky tool call with " },
+        { type: "code", value: "court.callTool(agent, tool, args, execute)" },
+        { type: "text", value: ". The SDK returns ALLOW, STOP_TOOL, or HUMAN_IN_THE_LOOP plus an evidence hash." },
+      ],
+    },
+    {
+      id: "supabase",
+      title: "Supabase Runtime",
+      body: "The dashboard reads and writes through /api/demo-flow. Create agentcourt_demo_state, agentcourt_demo_agents, and agentcourt_demo_violations before running the full demo.",
       bullets: [
         "GET /api/demo-flow returns state, agents, and violations.",
-        "POST /api/demo-flow accepts actions like connect_wallet and register_metatrader.",
+        "POST /api/demo-flow accepts connect_wallet, register_metatrader, run_market_agent, run_safe_action, and simulate_dangerous_action.",
+        "Blocked SDK decisions are stored as violations with evidence hashes.",
       ],
     },
     {
-      id: "events",
-      title: "Events",
-      parts: [
-        { type: "text", value: "Listen for " },
-        { type: "code", value: "AgentRegistered" },
-        { type: "text", value: ", " },
-        { type: "code", value: "ViolationReported" },
-        { type: "text", value: ", and " },
-        { type: "code", value: "StakeSlashed" },
-        { type: "text", value: "." },
-      ],
+      id: "metamask",
+      title: "MetaMask Troubleshooting",
+      body: "If MetaMask throws Failed to connect to MetaMask, unlock the extension, refresh the page, disconnect the site in MetaMask settings, and connect again. Also check that only one wallet extension is injecting a provider and that your Arc RPC URL is reachable.",
     },
     {
-      id: "frontend-guide",
-      title: "Frontend Guide",
-      body: "Keep the table and badge components unchanged; only swap the data source.",
-      bullets: [
-        "Use lib/demo-data.ts for agents and violations.",
-        "Persist content copy in agentcourt_demo_content.",
-      ],
-    },
-    {
-      id: "faqs",
-      title: "FAQs",
-      body: "Scores are visible, stake is denominated in USDC, and slashes redirect to an Arc explorer transaction.",
+      id: "deploy",
+      title: "Deploy",
+      body: "Deploy AgentCourt-Arc to Vercel, add the environment variables, run the Supabase SQL from docs/agent-builder-guide.md, deploy the AgentCourt contract on Arc Testnet, and set NEXT_PUBLIC_AGENT_COURT_ADDRESS.",
     },
   ],
   quickLinks: [
@@ -103,9 +107,9 @@ const LOCAL_FALLBACK_CONTENT: DocsPageContent = {
       icon: "ExternalLink",
     },
     {
-      title: "GitHub Repo",
-      label: "View source code",
-      href: "/",
+      title: "Builder Guide",
+      label: "Read the full local guide",
+      href: "/docs",
       icon: "Code2",
     },
   ],

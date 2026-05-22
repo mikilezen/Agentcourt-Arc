@@ -1,4 +1,10 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AgentCourt Arc
+
+AgentCourt Arc is a Next.js dashboard, Supabase runtime, Web3 interface, and SDK layer for registering agents, tracking reputation, enforcing policy, and reporting violations on Arc.
+
+For agent-builder setup, SDK usage, Supabase tables, MetaMask troubleshooting, and deployment steps, read:
+
+- [AgentCourt Builder Guide](docs/agent-builder-guide.md)
 
 ## Getting Started
 

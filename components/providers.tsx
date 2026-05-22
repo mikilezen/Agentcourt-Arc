@@ -6,10 +6,11 @@ import { createConfig, http, WagmiProvider } from "wagmi";
 import { injected } from "wagmi/connectors";
 
 import { arcTestnet } from "@/lib/chain";
+import { WalletErrorGuard } from "@/components/wallet-error-guard";
 
 export const config = createConfig({
   chains: [arcTestnet],
-  connectors: [injected()],
+  connectors: [injected({ unstable_shimAsyncInject: 1000 })],
   transports: {
     [arcTestnet.id]: http(),
   },
@@ -22,6 +23,7 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
+        <WalletErrorGuard />
         {children}
       </QueryClientProvider>
     </WagmiProvider>

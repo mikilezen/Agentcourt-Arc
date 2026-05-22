@@ -2,6 +2,10 @@ import { randomBytes } from "crypto";
 
 import { NextResponse } from "next/server";
 
+import {
+  AgentCourtOrchestrator,
+  createVerifiedAgent,
+} from "@/lib/agentcourt-orchestration-sdk";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 const STATE_TABLE = "agentcourt_demo_state";
@@ -18,6 +22,7 @@ type DemoAction =
   | "register_agent"
   | "register_metatrader"
   | "run_safe_action"
+  | "run_market_agent"
   | "simulate_dangerous_action";
 
 type DemoStateRow = {
@@ -312,6 +317,118 @@ async function simulateDangerousAction() {
   };
 }
 
+async function runMarketAgent() {
+  const supabase = getSupabaseServerClient();
+  const state = await ensureDefaultState();
+  const owner = state.connected_wallet ?? "0xArcOperator00000000000000000000000000000001";
+  const agent = await ensureMetaTraderRegistered(owner);
+  const orchestrator = new AgentCourtOrchestrator();
+  const sdkAgent = createVerifiedAgent({
+    id: agent.id,
+    name: agent.name,
+    owner: agent.owner,
+    strategy: "Agora market agent with Arc USDC settlement guardrails",
+  });
+
+  const confidence = Number((0.7 + Math.random() * 0.18).toFixed(2));
+  const notionalUsd = confidence > 0.82 ? 3200 : 1250;
+  const calls = [
+    {
+      tool: "market.read",
+      args: {
+        market: "Will ETH outperform BTC this week?",
+        source: "agora-demo-feed",
+      },
+    },
+    {
+      tool: "risk.score",
+      args: {
+        confidence,
+        volatility: "medium",
+        notionalUsd,
+      },
+    },
+    {
+      tool: "arc.quote",
+      args: {
+        pair: "USDC/position-token",
+        notionalUsd,
+      },
+    },
+    {
+      tool: "arc.transfer_usdc",
+      args: {
+        to: "0xArcMarketMaker0000000000000000000000000001",
+        amountUsd: notionalUsd,
+        memo: confidence > 0.85 ? "contains private key request" : "autonomous rebalance",
+      },
+    },
+    {
+      tool: "arc.publish_trace",
+      args: {
+        reasoning: "Signal, risk score, and settlement decision recorded for audit.",
+        notionalUsd: 0,
+      },
+    },
+  ];
+
+  const events = [];
+  for (const call of calls) {
+    const result = await orchestrator.callTool(sdkAgent, call.tool, call.args, () => ({
+      ok: true,
+      txHash: call.tool === "arc.transfer_usdc" ? generateTxHash() : undefined,
+    }));
+    events.push(result.event);
+  }
+
+  const blocked = events.find((event) => event.decision === "STOP_TOOL");
+  const approval = events.find((event) => event.decision === "HUMAN_IN_THE_LOOP");
+  const finalEvent = blocked ?? approval ?? events.at(-1);
+
+  if (blocked) {
+    const slashAmount = Number((agent.staked_usdc * 0.1).toFixed(2));
+    const nextAgent: DemoAgentRow = {
+      ...agent,
+      reputation: Math.max(0, agent.reputation - 12),
+      total_violations: agent.total_violations + 1,
+      total_slashed: Number((agent.total_slashed + slashAmount).toFixed(2)),
+      staked_usdc: Math.max(0, Number((agent.staked_usdc - slashAmount).toFixed(2))),
+      status: "at-risk",
+    };
+
+    const [agentUpdate, violationInsert] = await Promise.all([
+      supabase.from(AGENTS_TABLE).upsert(nextAgent).select("*").single<DemoAgentRow>(),
+      supabase
+        .from(VIOLATIONS_TABLE)
+        .insert({
+          agent_id: agent.id,
+          agent_name: agent.name,
+          agent_owner: agent.owner,
+          reason: blocked.reason,
+          severity: "high",
+          slash_amount: slashAmount,
+          tx_hash: blocked.evidenceHash,
+        })
+        .select("*")
+        .single<DemoViolationRow>(),
+    ]);
+
+    if (agentUpdate.error) throw agentUpdate.error;
+    if (violationInsert.error) throw violationInsert.error;
+  }
+
+  await updateState({
+    wallet_connected: true,
+    connected_wallet: owner,
+    middleware_status: blocked ? "blocked" : approval ? "needs_approval" : "allowed",
+    middleware_reason: finalEvent?.reason ?? "Market agent completed.",
+    last_contract_tx_hash: finalEvent?.evidenceHash ?? null,
+    last_action: "run_market_agent",
+  });
+
+  return events;
+}
+
 export async function GET() {
   try {
     const snapshot = await readSnapshot();
@@ -436,6 +553,10 @@ export async function POST(request: Request) {
           middleware_reason: "safe_action_allowed",
           last_action: "run_safe_action",
         });
+        break;
+      }
+      case "run_market_agent": {
+        await runMarketAgent();
         break;
       }
       case "simulate_dangerous_action": {

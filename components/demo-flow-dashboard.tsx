@@ -12,7 +12,7 @@ import { RecentViolations } from "@/components/recent-violations";
 import { StatCard } from "@/components/stat-card";
 import { Button } from "@/components/ui/button";
 import { Agent, AgentStatus, Severity, Violation } from "@/lib/types";
-import { AlertTriangle, ArrowRightIcon, DollarSign, Flame, Users } from "lucide-react";
+import { AlertTriangle, ArrowRightIcon, Bot, Code2, DollarSign, Flame, ShieldCheck, Users, WalletCards } from "lucide-react";
 
 type ApiSnapshot = {
   state: {
@@ -91,6 +91,17 @@ function mapApiViolation(v: ApiSnapshot["violations"][number]): Violation {
   };
 }
 
+function readConfiguredContractAddress(): `0x${string}` | undefined {
+  if (typeof window !== "undefined") {
+    const stored = window.localStorage.getItem("agentcourt_contract_address");
+    if (stored?.startsWith("0x")) {
+      return stored as `0x${string}`;
+    }
+  }
+
+  return process.env.NEXT_PUBLIC_AGENT_COURT_ADDRESS as `0x${string}` | undefined;
+}
+
 export function DemoFlowDashboard() {
   const { address: connectedAddress, isConnected } = useAccount();
   const [snapshot, setSnapshot] = useState<ApiSnapshot | null>(null);
@@ -98,25 +109,14 @@ export function DemoFlowDashboard() {
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [agentCourtAddressInput, setAgentCourtAddressInput] = useState("");
   const [agentCourtAddress, setAgentCourtAddress] = useState<`0x${string}` | undefined>(undefined);
+  const [agentCourtAddressInput, setAgentCourtAddressInput] = useState("");
 
   // Resolve contract address
   const resolveContracts = useCallback(() => {
-    let resolved: `0x${string}` | undefined;
-    if (typeof window !== "undefined") {
-      const stored = window.localStorage.getItem("agentcourt_contract_address");
-      if (stored && stored.startsWith("0x")) {
-        resolved = stored as `0x${string}`;
-      }
-    }
-    if (!resolved) {
-      resolved = process.env.NEXT_PUBLIC_AGENT_COURT_ADDRESS as `0x${string}` | undefined;
-    }
+    const resolved = readConfiguredContractAddress();
     setAgentCourtAddress(resolved);
-    if (resolved) {
-      setAgentCourtAddressInput(resolved);
-    }
+    setAgentCourtAddressInput(resolved ?? "");
   }, []);
 
   useEffect(() => {
@@ -144,6 +144,14 @@ export function DemoFlowDashboard() {
     resolveContracts();
     window.dispatchEvent(new CustomEvent("agentcourt:contracts-deployed"));
   }, [agentCourtAddressInput, resolveContracts]);
+
+  const handleClearContractOverride = useCallback(() => {
+    if (typeof window === "undefined") return;
+
+    window.localStorage.removeItem("agentcourt_contract_address");
+    resolveContracts();
+    window.dispatchEvent(new CustomEvent("agentcourt:contracts-deployed"));
+  }, [resolveContracts]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -182,7 +190,14 @@ export function DemoFlowDashboard() {
   }, [load]);
 
   const runAction = useCallback(
-    async (action: "connect_wallet" | "register_metatrader" | "run_safe_action" | "simulate_dangerous_action") => {
+    async (
+      action:
+        | "connect_wallet"
+        | "register_metatrader"
+        | "run_safe_action"
+        | "run_market_agent"
+        | "simulate_dangerous_action"
+    ) => {
       setActionLoading(true);
       setError(null);
 
@@ -254,6 +269,56 @@ export function DemoFlowDashboard() {
     <>
       <HeroCard />
 
+      <section className="grid gap-4 lg:grid-cols-[1.35fr_0.65fr]">
+        <div className="panel overflow-hidden p-0">
+          <div className="border-b border-border bg-muted/20 p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="max-w-2xl space-y-2">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase text-primary">
+                  <ShieldCheck className="size-4" />
+                  AgentCourt SDK orchestration
+                </div>
+                <h2 className="text-2xl font-semibold leading-tight">Policy-gated agents for Arc settlement.</h2>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  The SDK wraps every agent tool call before execution, writes evidence hashes, and lets AgentCourt
+                  decide whether the action is allowed, blocked, or needs human approval.
+                </p>
+              </div>
+              <Button disabled={actionLoading || !walletConnected} onClick={() => void runAction("run_market_agent")}>
+                <Bot />
+                Run market agent
+              </Button>
+            </div>
+          </div>
+          <div className="grid gap-0 md:grid-cols-3">
+            {[
+              { label: "1. Passport", value: "Verified agent identity", icon: WalletCards },
+              { label: "2. Middleware", value: "Tool call policy check", icon: ShieldCheck },
+              { label: "3. Web3", value: "Arc/Circle action or evidence hash", icon: Code2 },
+            ].map((item) => (
+              <div key={item.label} className="border-t border-border p-5 md:border-l md:border-t-0 first:md:border-l-0">
+                <item.icon className="mb-4 size-5 text-primary" />
+                <p className="text-xs font-semibold uppercase text-muted-foreground">{item.label}</p>
+                <p className="mt-1 text-sm font-medium">{item.value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="panel space-y-4">
+          <div>
+            <p className="text-xs font-semibold uppercase text-muted-foreground">SDK preview</p>
+            <h2 className="mt-1 text-lg font-semibold">Connect an agent</h2>
+          </div>
+          <pre className="overflow-auto rounded-lg border border-border bg-background p-4 text-xs leading-6 text-muted-foreground"><code>{`const court = new AgentCourtOrchestrator();
+
+await court.callTool(agent, "arc.transfer_usdc", {
+  amountUsd: 1250,
+  to: marketMaker
+}, executeArcTransfer);`}</code></pre>
+        </div>
+      </section>
+
       {/* Developer Contract Configuration Panel */}
       <section className="panel space-y-4">
         <h2 className="text-lg font-semibold">Developer Settings</h2>
@@ -269,6 +334,9 @@ export function DemoFlowDashboard() {
               />
               <Button size="sm" onClick={handleSaveContractAddress}>
                 Save
+              </Button>
+              <Button size="sm" variant="ghost" onClick={handleClearContractOverride}>
+                Clear
               </Button>
             </div>
             <span className="text-[10px] text-muted-foreground">
@@ -299,6 +367,7 @@ export function DemoFlowDashboard() {
             onClick={() => void runAction("register_metatrader")}
             variant="secondary"
           >
+            <Bot />
             Register MetaTrader AI (100 USDC)
           </Button>
           <Button
@@ -306,6 +375,7 @@ export function DemoFlowDashboard() {
             onClick={() => void runAction("run_safe_action")}
             variant="secondary"
           >
+            <ShieldCheck />
             Run Safe Action
           </Button>
           <Button
@@ -313,6 +383,7 @@ export function DemoFlowDashboard() {
             onClick={() => void runAction("simulate_dangerous_action")}
             variant="destructive"
           >
+            <AlertTriangle />
             Simulate Dangerous Action
           </Button>
         </div>
