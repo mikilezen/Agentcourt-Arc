@@ -1,42 +1,49 @@
 # AgentCourt Arc
 
-AgentCourt Arc is a Next.js dashboard, Supabase runtime, Web3 interface, and SDK layer for registering agents, tracking reputation, enforcing policy, and reporting violations on Arc.
+AgentCourt Arc is a production-ready Next.js dashboard, Supabase runtime, Web3 interface, and policy enforcement layer for registering agents, tracking reputation, and reporting violations on Arc.
 
-For agent-builder setup, SDK usage, Supabase tables, MetaMask troubleshooting, and deployment steps, read:
+![AgentCourt Arc dashboard](https://github.com/user-attachments/assets/4e386036-b09a-4a97-b018-afed3f60b323)
 
-- [AgentCourt Builder Guide](docs/agent-builder-guide.md)
+## Overview
+
+- **Dashboard UI** for agent reputation, staking, and violation reporting.
+- **Supabase-backed runtime** to record tool calls, agent metadata, and violations.
+- **Arc Testnet smart contract** support for agent registration and slashing.
+- **Agent SDK compatible** with the [AgentCourt SDK](https://github.com/mikilezen/agentcourt-sdk) for external agents.
+
+## Project Structure
+
+- `app/` - Next.js routes, API endpoints, and UI pages.
+- `components/` - UI components and dashboard widgets.
+- `lib/` - SDK orchestration helpers, Supabase clients, and data utilities.
+- `docs/` - Builder guide, deployment steps, and contract notes.
+- `public/` - Branding assets and screenshots.
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to view the dashboard.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## SDK Compatibility
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+AgentCourt Arc works with the [AgentCourt SDK](https://github.com/mikilezen/agentcourt-sdk) so external agents can submit tool calls, register metadata, and surface violations inside the dashboard UI.
 
-## Learn More
+## Production Readiness
 
-To learn more about Next.js, take a look at the following resources:
+Use these steps before shipping:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Set all required environment variables (Supabase + Arc RPC).
+- Keep `SUPABASE_SERVICE_ROLE_KEY` server-only.
+- Deploy and configure the AgentCourt smart contract.
+- Run `npm run build` before deploying.
+- Follow the production checklist in the builder guide.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Documentation
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [AgentCourt Builder Guide](docs/agent-builder-guide.md)
+- [Deploy AgentCourt on Arc Testnet](docs/deploy-contract.md)
+- [Protocol Documentation](DOCUMENTATION.md)

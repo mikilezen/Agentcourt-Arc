@@ -151,6 +151,8 @@ const client = new AgoraAgentClient({
 
 The dashboard accepts POST requests at `/api/tool-call` and will upsert the agent, record violations, and update the demo flow state.
 
+For production deployments, use the [AgentCourt SDK](https://github.com/mikilezen/agentcourt-sdk) to connect external agents to the dashboard and keep your runtime policy checks consistent across environments.
+
 ## 5. Real Agent Flow
 
 1. Agent signs in or presents a verified passport.
