@@ -385,6 +385,28 @@ export function RegisterForm({ form }: { form: RegisterFormContent }) {
           {stakeValue || form.minimumStake} {form.stakeUnit}
         </span>
       </p>
+      
+      <div className="mt-4 rounded-lg border border-border/60 bg-muted/20 p-3 space-y-2 animate-in fade-in slide-in-from-bottom-1 duration-200">
+        <p className="text-xs font-semibold text-foreground uppercase tracking-wider">Arc Network Gas Verification</p>
+        <div className="space-y-1.5">
+          <div className="flex justify-between items-center text-xs text-muted-foreground">
+            <span>Gas Payment Token</span>
+            <span className="font-mono font-semibold text-foreground">USDC</span>
+          </div>
+          <div className="flex justify-between items-center text-xs text-muted-foreground">
+            <span>Target Gas Price</span>
+            <span className="font-mono font-semibold text-primary">21.5 Gwei</span>
+          </div>
+          <div className="flex justify-between items-center text-xs text-muted-foreground">
+            <span>Network Status</span>
+            <span className="flex items-center gap-1 font-semibold text-success">
+              <span className="size-1.5 rounded-full bg-success animate-pulse" />
+              Verified (Active)
+            </span>
+          </div>
+        </div>
+      </div>
+
       <div className="mt-6 flex flex-col gap-3">
         <Button
           type="button"

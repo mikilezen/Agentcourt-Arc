@@ -22,6 +22,7 @@ export default function AboutPage() {
           alt="Glowing shield with robot face and chain cubes"
           width={420}
           height={315}
+          className="h-auto w-[420px] max-w-full"
           // className="rounded-xl border border-primary/20 object-cover shadow-[0_0_80px_-10px_hsl(var(--primary)/0.5)]"
         />
       </section>

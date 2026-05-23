@@ -39,6 +39,7 @@ export function HeroCard() {
             width={280}
             height={210}
             priority
+            className="h-auto w-[280px]"
             // className="rounded-xl border border-primary/20 object-cover shadow-[0_0_80px_-10px_hsl(var(--primary)/0.5)]"
           />
         </div>

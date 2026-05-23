@@ -1,14 +1,18 @@
 import { createPublicClient, defineChain, http } from "viem";
 
-const rpcUrl = process.env.NEXT_PUBLIC_ARC_TESTNET_RPC_URL ?? "https://rpc.alta.testnet.arc";
-const explorerUrl = process.env.NEXT_PUBLIC_ARC_TESTNET_EXPLORER_URL ?? "https://explorer.alta.testnet.arc";
+const configuredRpcUrl = process.env.NEXT_PUBLIC_ARC_TESTNET_RPC_URL;
+const rpcUrl =
+  configuredRpcUrl && !configuredRpcUrl.includes("<key>") && !configuredRpcUrl.includes("your-canteen-key")
+    ? configuredRpcUrl
+    : "https://rpc.testnet.arc.network";
+const explorerUrl = process.env.NEXT_PUBLIC_ARC_TESTNET_EXPLORER_URL ?? "https://testnet.arcscan.app";
 
 export const arcTestnet = defineChain({
-  id: 11155422,
-  name: "Arc Testnet (Altar)",
+  id: 5042002,
+  name: "Arc Testnet",
   nativeCurrency: {
-    name: "Ether",
-    symbol: "ETH",
+    name: "USDC",
+    symbol: "USDC",
     decimals: 18,
   },
   rpcUrls: {
