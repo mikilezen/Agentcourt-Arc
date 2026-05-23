@@ -57,7 +57,97 @@ export const AGENTCOURT_AGORA_POLICY: AgentCourtPolicy = {
 export class AgentCourtOrchestrator {
   private dailySpendUsd = 0;
 
-  constructor(private readonly policy: AgentCourtPolicy = AGENTCOURT_AGORA_POLICY) {}
+  constructor(
+    private readonly policy: AgentCourtPolicy = AGENTCOURT_AGORA_POLICY,
+    private readonly rpcUrl: string = "https://rpc.testnet.arc.network",
+    private readonly contractAddress: string = process.env.NEXT_PUBLIC_AGENT_COURT_ADDRESS || "0x1a6389aa779BD3C01B7867bB76a9B51f283f9B3a"
+  ) {}
+
+  /**
+   * Low-dependency JSON-RPC client over fetch
+   */
+  async ethCall(to: string, data: string): Promise<string> {
+    try {
+      const response = await fetch(this.rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: Date.now(),
+          method: "eth_call",
+          params: [
+            { to, data },
+            "latest"
+          ]
+        })
+      });
+      const result = await response.json();
+      if (result.error) {
+        throw new Error(result.error.message);
+      }
+      return result.result;
+    } catch (error: any) {
+      throw new Error(`RPC Connection failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Reads profile on-chain from the AgentCourt smart contract registry
+   */
+  async queryOnChainProfile(ownerAddress: string) {
+    if (!ownerAddress || !ownerAddress.startsWith("0x")) {
+      return { status: "simulated" as const, reason: "Invalid owner address" };
+    }
+
+    try {
+      // 1. Get Agent ID of Owner
+      const addressClean = ownerAddress.slice(2).toLowerCase();
+      const agentIdData = `0xb3631cc9` + addressClean.padStart(64, "0");
+      const agentIdHex = await this.ethCall(this.contractAddress, agentIdData);
+      
+      if (!agentIdHex || agentIdHex === "0x" || /^0x0*$/.test(agentIdHex)) {
+        return { status: "unregistered" as const, id: 0 };
+      }
+      
+      const agentId = parseInt(agentIdHex, 16);
+      
+      // 2. Get Agent Profile from ID
+      const profileData = `0x16b06387` + agentId.toString(16).padStart(64, "0");
+      const profileHex = await this.ethCall(this.contractAddress, profileData);
+
+      if (!profileHex || profileHex === "0x") {
+        return { status: "unregistered" as const, id: agentId };
+      }
+
+      const dataHex = profileHex.startsWith("0x") ? profileHex.slice(2) : profileHex;
+      const ownerHex = "0x" + dataHex.substring(24, 64);
+      const stake = BigInt("0x" + dataHex.substring(128, 192));
+      const reputation = parseInt(dataHex.substring(192, 256), 16);
+      const totalViolations = parseInt(dataHex.substring(256, 320), 16);
+      const totalSlashed = BigInt("0x" + dataHex.substring(320, 384));
+      const statusCode = parseInt(dataHex.substring(384, 448), 16);
+
+      const statuses = ["None", "Active", "Slashed"];
+      const status = statuses[statusCode] || "Unknown";
+
+      return {
+        status: "verified" as const,
+        id: agentId,
+        owner: ownerHex,
+        stake: Number(stake) / 1e6, // USDC decimals
+        reputation,
+        totalViolations,
+        totalSlashed: Number(totalSlashed) / 1e6,
+        onChainStatus: status,
+        rawStatusCode: statusCode
+      };
+    } catch (error: any) {
+      return {
+        status: "sandbox" as const,
+        error: error.message
+      };
+    }
+  }
 
   async callTool(
     agent: AgentCourtAgent,
@@ -65,7 +155,16 @@ export class AgentCourtOrchestrator {
     args: Record<string, unknown>,
     execute?: () => Promise<unknown> | unknown
   ) {
-    const event = this.evaluate(agent, tool, args);
+    // Check status on-chain
+    let onChainSlashed = false;
+    if (agent.owner) {
+      const profile = await this.queryOnChainProfile(agent.owner);
+      if (profile.status === "verified" && profile.onChainStatus === "Slashed") {
+        onChainSlashed = true;
+      }
+    }
+
+    const event = this.evaluate(agent, tool, args, onChainSlashed);
 
     if (event.decision !== "ALLOW") {
       return { event, result: null };
@@ -77,14 +176,22 @@ export class AgentCourtOrchestrator {
     return { event, result };
   }
 
-  evaluate(agent: AgentCourtAgent, tool: string, args: Record<string, unknown>): ToolCallEvent {
+  evaluate(
+    agent: AgentCourtAgent, 
+    tool: string, 
+    args: Record<string, unknown>,
+    onChainSlashed: boolean = false
+  ): ToolCallEvent {
     const started = performance.now();
     const amount = amountFromArgs(args);
     const sensitiveFindings = findSensitiveValues(this.policy, args);
     let decision: ToolDecision = "ALLOW";
     let reason = "Policy checks passed.";
 
-    if (!this.policy.allowedTools.includes(tool)) {
+    if (onChainSlashed) {
+      decision = "STOP_TOOL";
+      reason = "Agent status on-chain is Slashed. Tool calls permanently frozen.";
+    } else if (!this.policy.allowedTools.includes(tool)) {
       decision = "STOP_TOOL";
       reason = "Tool is not allowlisted for this agent.";
     } else if (agent.passport.trustLevel !== "verified") {

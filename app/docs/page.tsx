@@ -52,7 +52,7 @@ const LOCAL_FALLBACK_CONTENT: DocsPageContent = {
       parts: [
         { type: "code", value: "cd AgentCourt-Arc && npm install && npm run dev" },
         { type: "text", value: " starts the dashboard at http://localhost:3000. On Windows PowerShell, use " },
-        { type: "code", value: "npm.cmd run dev" },
+        { type: "code", value: "npm run dev" },
         { type: "text", value: " if script execution policy blocks npm." },
       ],
     },
@@ -103,13 +103,13 @@ const LOCAL_FALLBACK_CONTENT: DocsPageContent = {
     {
       title: "Smart Contract",
       label: "View contract on Explorer",
-      href: "https://explorer-testnet.arc.network",
+      href: "http://testnet.arcscan.app/",
       icon: "ExternalLink",
     },
     {
       title: "Builder Guide",
       label: "Read the full local guide",
-      href: "/docs",
+      href: "/github.com/mikilezen/agentcourt-arc",
       icon: "Code2",
     },
   ],

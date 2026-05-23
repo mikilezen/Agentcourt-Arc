@@ -149,10 +149,10 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   }, [mintTxHash, isWaitingForMint, refetchBalance, fetchTotalStaked]);
 
   return (
-    <aside className="flex h-full w-64 flex-col border-r border-border bg-background p-4">
+    <aside className="overflow-y-auto scrollbar-thumb-black scrollbar-thin flex h-full w-64 flex-col border-r border-border bg-background p-4">
       <Link href="/" className="flex items-center gap-3" onClick={onNavigate}>
         <span className="grid place-items-center">
-          <img src="/logo.jpg" alt="" className="h-9 w-9" />
+          <img src="/agentcourt.svg" alt="" className="h-9 w-9" />
         </span>
         <span>
           <span className="block text-md font-semibold text-card-foreground">
@@ -186,6 +186,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           );
         })}
       </nav>
+      <br />
 
       <div className="mt-auto flex flex-col gap-4">
         <div className="rounded-xl border border-border bg-card p-4">

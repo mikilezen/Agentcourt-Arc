@@ -269,7 +269,7 @@ export function DemoFlowDashboard() {
     <>
       <HeroCard />
 
-      <section className="grid gap-4 lg:grid-cols-[1.35fr_0.65fr]">
+      {/* <section className="grid gap-4 lg:grid-cols-[1.35fr_0.65fr]">
         <div className="panel overflow-hidden p-0">
           <div className="border-b border-border bg-muted/20 p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -317,7 +317,7 @@ await court.callTool(agent, "arc.transfer_usdc", {
   to: marketMaker
 }, executeArcTransfer);`}</code></pre>
         </div>
-      </section>
+      </section> */}
 
       {/* Developer Contract Configuration Panel */}
       <section className="panel space-y-4">
@@ -359,7 +359,7 @@ await court.callTool(agent, "arc.transfer_usdc", {
         </div>
       </section>
 
-      <section className="panel space-y-4">
+      {/* <section className="panel space-y-4">
         <h2 className="text-lg font-semibold">Agent Simulator & Middleware Controls</h2>
         <div className="grid gap-3 md:grid-cols-3">
           <Button
@@ -410,7 +410,7 @@ await court.callTool(agent, "arc.transfer_usdc", {
           <p className="text-sm text-muted-foreground">Connect your wallet from the top bar to continue.</p>
         ) : null}
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      </section>
+      </section> */}
 
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

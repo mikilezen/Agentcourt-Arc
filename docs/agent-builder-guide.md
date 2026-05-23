@@ -131,6 +131,26 @@ if (result.event.decision === "STOP_TOOL") {
 
 The SDK returns an evidence hash for every decision. Store that hash in Supabase and, when using the contract, submit it with violation reporting.
 
+### Gateway endpoint for external agents
+
+If you are running an agent outside the dashboard (for example, `demo-ts-project` with the AgentCourt SDK), point the SDK gateway to the Arc dashboard so tool calls show up in the Supabase-backed UI:
+
+```ts
+import { AgoraAgentClient, createVerifiedAgent } from "agentcourt";
+
+const client = new AgoraAgentClient({
+  endpoint: "http://localhost:3000", // Arc dashboard
+  agent: createVerifiedAgent({
+    id: "market-agent-01",
+    name: "Market Agent",
+    ownerAddress: "0xYourWallet",
+    strategy: "Arc USDC market settlement with policy checks",
+  }),
+});
+```
+
+The dashboard accepts POST requests at `/api/tool-call` and will upsert the agent, record violations, and update the demo flow state.
+
 ## 5. Real Agent Flow
 
 1. Agent signs in or presents a verified passport.

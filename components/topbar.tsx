@@ -1,31 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Menu, MonitorPlay, PlugZap, Wallet } from "lucide-react";
 
-import { useAccount, useConnect, useDisconnect } from "wagmi";
+import { useAccount, useConnect, useDisconnect, type Connector } from "wagmi";
 
 import { AgentAvatar } from "@/components/agent-avatar";
 import { Button } from "@/components/ui/button";
 import { truncateAddress } from "@/lib/format";
-
-type EthereumProvider = {
-  isMetaMask?: boolean;
-  providers?: EthereumProvider[];
-};
-
-function getBrowserWalletProvider() {
-  if (typeof window === "undefined") {
-    return undefined;
-  }
-
-  const ethereum = (window as Window & { ethereum?: EthereumProvider }).ethereum;
-  if (!ethereum) {
-    return undefined;
-  }
-
-  return ethereum.providers?.[0] ?? ethereum;
-}
 
 function walletErrorMessage(caughtError: unknown) {
   const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
@@ -111,38 +93,38 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
     };
   }, [connectOpen, menuOpen, toolboxOpen]);
 
-  const connectWallet = useCallback(async () => {
-    setError(null);
-    const walletProvider = getBrowserWalletProvider();
-
-    if (!walletProvider) {
-      setError("No browser wallet found. You can install MetaMask, Rabby, Coinbase Wallet, or use simulator mode.");
-      setToolboxOpen(true);
-      return;
+  // Deduplicate and filter out generic injected connector if specific wallets exist (via EIP-6963)
+  const displayedConnectors = useMemo(() => {
+    if (connectors.length <= 1) {
+      return connectors;
     }
-
-    const connector = connectors.find((item) => item.id === "injected") ?? connectors[0];
-    if (!connector) {
-      setError("Wallet connector is not ready. Refresh the page and try again.");
-      setToolboxOpen(true);
-      return;
+    const hasSpecific = connectors.some((c) => c.id !== "injected");
+    if (hasSpecific) {
+      return connectors.filter((c) => c.id !== "injected");
     }
+    return connectors;
+  }, [connectors]);
 
-    connect(
-      { connector },
-      {
-        onSuccess: () => {
-          setMenuOpen(false);
-          setToolboxOpen(false);
-          setConnectOpen(false);
-        },
-        onError: (caughtError) => {
-          setError(walletErrorMessage(caughtError));
-          setToolboxOpen(true);
-        },
-      }
-    );
-  }, [connect, connectors]);
+  const connectWalletByConnector = useCallback(
+    async (connector: Connector) => {
+      setError(null);
+      connect(
+        { connector },
+        {
+          onSuccess: () => {
+            setMenuOpen(false);
+            setToolboxOpen(false);
+            setConnectOpen(false);
+          },
+          onError: (caughtError) => {
+            setError(walletErrorMessage(caughtError));
+            setToolboxOpen(true);
+          },
+        }
+      );
+    },
+    [connect]
+  );
 
   const useSimulatorWallet = useCallback(async () => {
     const demoAddress = "0x000000000000000000000000000000000000A7C1";
@@ -191,14 +173,11 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
           <Menu className="size-5" />
         </Button>
         <div className="ml-auto flex items-center gap-3">
-          {/* <Button variant="ghost" size="icon-sm" aria-label="Toggle theme">
-            <Moon className="size-5" />
-          </Button> */}
           {address ? (
             <div className="relative" ref={menuRef}>
               <button
                 type="button"
-                className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5"
+                className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 hover:border-muted-foreground/50 transition-colors"
                 onClick={() => setMenuOpen((prev) => !prev)}
                 aria-expanded={menuOpen}
                 aria-haspopup="menu"
@@ -235,14 +214,14 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
           ) : (
             <div className="relative flex flex-col items-end gap-1" ref={connectRef}>
               <Button onClick={() => setConnectOpen((open) => !open)} disabled={isConnecting}>
-                <Wallet />
+                <Wallet className="size-4 mr-2" />
                 {isConnecting ? "Connecting..." : "Connect with"}
-                <ChevronDown className="size-4" />
+                <ChevronDown className="size-4 ml-1" />
               </Button>
               {connectOpen ? (
-                <div className="absolute right-0 top-full z-50 mt-2 w-72 rounded-lg border border-border bg-card p-2 text-left text-sm shadow-lg">
+                <div className="absolute right-0 top-full z-50 mt-2 w-72 rounded-lg border border-border bg-card p-2 text-left text-sm shadow-lg animate-in fade-in slide-in-from-top-1 duration-250">
                   <p className="px-2 py-1 text-xs font-semibold uppercase text-muted-foreground">Choose connection</p>
-                  <button
+                  {/* <button
                     type="button"
                     className="flex w-full items-start gap-3 rounded-md px-2 py-2 text-left hover:bg-muted"
                     onClick={() => void useSimulatorWallet()}
@@ -252,18 +231,25 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
                       <span className="block font-medium">Simulator</span>
                       <span className="block text-xs text-muted-foreground">Run AgentCourt without any wallet extension.</span>
                     </span>
-                  </button>
-                  <button
-                    type="button"
-                    className="flex w-full items-start gap-3 rounded-md px-2 py-2 text-left hover:bg-muted"
-                    onClick={() => void connectWallet()}
-                  >
-                    <PlugZap className="mt-0.5 size-4 text-primary" />
-                    <span>
-                      <span className="block font-medium">Browser wallet</span>
-                      <span className="block text-xs text-muted-foreground">MetaMask, Rabby, Coinbase, Brave, or another injected wallet.</span>
-                    </span>
-                  </button>
+                  </button> */}
+
+                  {displayedConnectors.map((connector) => (
+                    <button
+                      key={connector.id}
+                      type="button"
+                      className="flex w-full items-start gap-3 rounded-md px-2 py-2 text-left hover:bg-muted"
+                      onClick={() => void connectWalletByConnector(connector)}
+                    >
+                      <PlugZap className="mt-0.5 size-4 text-primary" />
+                      <span>
+                        <span className="block font-medium">{connector.name}</span>
+                        <span className="block text-xs text-muted-foreground">
+                          Connect using {connector.name} extension.
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+
                   <button
                     type="button"
                     className="flex w-full items-start gap-3 rounded-md px-2 py-2 text-left hover:bg-muted"
@@ -287,18 +273,28 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
                 </button>
               ) : null}
               {toolboxOpen ? (
-                <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-lg border border-border bg-card p-3 text-left text-xs shadow-lg">
+                <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-lg border border-border bg-card p-3 text-left text-xs shadow-lg animate-in fade-in slide-in-from-top-1 duration-250">
                   <p className="font-semibold text-foreground">Wallet toolbox</p>
+                  
+                  <div className="my-2 rounded border border-border bg-muted/40 p-2 font-mono text-[10px] text-muted-foreground space-y-1">
+                    <p className="text-foreground font-semibold">Arc Testnet Settings:</p>
+                    <p>• RPC: https://rpc.testnet.arc.network</p>
+                    <p>• Chain ID: 5042002</p>
+                    <p>• Currency: USDC (18 Decimals)</p>
+                    <p>• Current Gas Price: ~21.5 Gwei</p>
+                  </div>
+
                   <ol className="mt-2 list-decimal space-y-1 pl-4 text-muted-foreground">
-                    <li>Use MetaMask, Rabby, Coinbase Wallet, Brave Wallet, or another injected wallet.</li>
-                    <li>Unlock the wallet and keep the extension popup open.</li>
+                    <li>Use MetaMask, Rabby, Coinbase Wallet, or Brave.</li>
+                    <li>Unlock your wallet and select Arc Testnet.</li>
+                    <li>Ensure you have USDC for gas (21.5 Gwei).</li>
                     <li>If one wallet is broken, disable it for this tab and refresh.</li>
-                    <li>Approve Arc Testnet if prompted.</li>
                   </ol>
+                  
                   <div className="mt-3 flex flex-wrap justify-end gap-2">
-                    <Button type="button" size="sm" variant="outline" onClick={() => void useSimulatorWallet()}>
+                    {/* <Button type="button" size="sm" variant="outline" onClick={() => void useSimulatorWallet()}>
                       Simulator
-                    </Button>
+                    </Button> */}
                     <Button type="button" size="sm" variant="ghost" onClick={() => setToolboxOpen(false)}>
                       Close
                     </Button>

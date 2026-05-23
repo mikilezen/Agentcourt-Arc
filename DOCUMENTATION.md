@@ -20,8 +20,8 @@ AgentCourt Arc tracks agent stake, reputation, violation reports, and slashing o
 Registration starts with `approve(usdc, amount)`, then calls `registerAgent(amount, metadata)`.
 
 ### Quick Links
-- **Smart Contract**: [View contract on Explorer](https://explorer-testnet.arc.network)
-- **GitHub Repo**: [View source code](/)
+- **Smart Contract**: [View contract on Explorer](http://testnet.arcscan.app/)
+- **GitHub Repo**: [View source code](https://www.github.com/mikilezen/agentcourt-arc)
 
 ---
 
