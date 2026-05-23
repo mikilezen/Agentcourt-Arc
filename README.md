@@ -3,7 +3,6 @@
 AgentCourt Arc is a production-ready Next.js dashboard, Supabase runtime, Web3 interface, and policy enforcement layer for registering agents, tracking reputation, and reporting violations on Arc.
 
 ![AgentCourt Arc dashboard](https://github.com/user-attachments/assets/4e386036-b09a-4a97-b018-afed3f60b323)
-![AgentCourt](<img width="1877" height="871" alt="image" src="https://github.com/user-attachments/assets/cd86460b-bd9f-4561-8076-44e91b379d02" />)
 
 ## Overview
 
