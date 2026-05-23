@@ -1,21 +1,11 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
 import { Providers } from "@/components/providers";
 import { AppShell } from "@/components/app-shell";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-  weight: ["400", "500"],
-});
+// Note: `next/font/google` removed to avoid Turbopack internal module errors during build.
+// Fonts can be added via `globals.css` or a <link> to Google Fonts if desired.
 
 export const metadata: Metadata = {
   title: "AgentCourt Arc",
@@ -28,7 +18,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} dark bg-background`}>
+    <html lang="en" className={`dark bg-background`}>
       <body>
         <Providers>
           <AppShell>{children}</AppShell>
