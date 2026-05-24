@@ -7,6 +7,8 @@ import {
   createVerifiedAgent,
 } from "@/lib/agentcourt-orchestration-sdk";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { demoActionSchema, registerAgentSchema } from "@/lib/validation/schemas";
+import { rateLimit, getClientIp, RATE_LIMITS } from "@/lib/rate-limit";
 
 const STATE_TABLE = "agentcourt_demo_state";
 const AGENTS_TABLE = "agentcourt_demo_agents";
@@ -17,8 +19,6 @@ const HIGH_SLASH_RATE = 0.2;
 const HIGH_REPUTATION_PENALTY = 20;
 
 type DemoAction =
-  | "connect_wallet"
-  | "disconnect_wallet"
   | "register_agent"
   | "register_metatrader"
   | "run_safe_action"
@@ -27,6 +27,7 @@ type DemoAction =
 
 type DemoStateRow = {
   id: string;
+  wallet_address: string | null;
   connected_wallet: string | null;
   wallet_connected: boolean;
   middleware_status: string | null;
@@ -95,11 +96,12 @@ function generateTxHash(): string {
   return `0x${randomBytes(32).toString("hex")}`;
 }
 
-function defaultState(): DemoStateRow {
+function defaultState(walletAddress: string): DemoStateRow {
   return {
-    id: "default",
-    connected_wallet: null,
-    wallet_connected: false,
+    id: walletAddress.toLowerCase(),
+    wallet_address: walletAddress.toLowerCase(),
+    connected_wallet: walletAddress,
+    wallet_connected: true,
     middleware_status: null,
     middleware_reason: null,
     last_contract_tx_hash: null,
@@ -107,12 +109,22 @@ function defaultState(): DemoStateRow {
   };
 }
 
-async function ensureDefaultState() {
+/**
+ * Get the authenticated wallet address from the middleware-injected header.
+ * Returns null for unauthenticated requests (e.g., GET).
+ */
+function getAuthenticatedWallet(request: Request): string | null {
+  return request.headers.get("x-wallet-address");
+}
+
+async function ensureWalletState(walletAddress: string): Promise<DemoStateRow> {
   const supabase = getSupabaseServerClient();
+  const normalized = walletAddress.toLowerCase();
+
   const current = await supabase
     .from(STATE_TABLE)
     .select("*")
-    .eq("id", "default")
+    .eq("id", normalized)
     .maybeSingle<DemoStateRow>();
 
   if (current.error) {
@@ -120,7 +132,11 @@ async function ensureDefaultState() {
   }
 
   if (!current.data) {
-    const inserted = await supabase.from(STATE_TABLE).upsert(defaultState()).select("*").single<DemoStateRow>();
+    const inserted = await supabase
+      .from(STATE_TABLE)
+      .upsert(defaultState(walletAddress))
+      .select("*")
+      .single<DemoStateRow>();
 
     if (inserted.error) {
       throw inserted.error;
@@ -132,22 +148,46 @@ async function ensureDefaultState() {
   return current.data;
 }
 
-async function readSnapshot(): Promise<Snapshot> {
+async function readSnapshot(walletAddress?: string | null): Promise<Snapshot> {
   const supabase = getSupabaseServerClient();
-  const state = await ensureDefaultState();
+
+  // Use per-wallet state if authenticated, otherwise return a default empty state
+  let state: DemoStateRow;
+  if (walletAddress) {
+    state = await ensureWalletState(walletAddress);
+  } else {
+    state = {
+      id: "public",
+      wallet_address: null,
+      connected_wallet: null,
+      wallet_connected: false,
+      middleware_status: null,
+      middleware_reason: null,
+      last_contract_tx_hash: null,
+      last_action: null,
+    };
+  }
+
+  let agentsQuery = supabase
+    .from(AGENTS_TABLE)
+    .select("*")
+    .order("reputation", { ascending: false });
+
+  let violationsQuery = supabase
+    .from(VIOLATIONS_TABLE)
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(25);
+
+  if (walletAddress) {
+    const normalized = walletAddress.toLowerCase();
+    agentsQuery = agentsQuery.eq("owner", normalized);
+    violationsQuery = violationsQuery.eq("agent_owner", normalized);
+  }
 
   const [agentsResult, violationsResult] = await Promise.all([
-    supabase
-      .from(AGENTS_TABLE)
-      .select("*")
-      .order("reputation", { ascending: false })
-      .returns<DemoAgentRow[]>(),
-    supabase
-      .from(VIOLATIONS_TABLE)
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(25)
-      .returns<DemoViolationRow[]>(),
+    agentsQuery.returns<DemoAgentRow[]>(),
+    violationsQuery.returns<DemoViolationRow[]>(),
   ]);
 
   if (agentsResult.error) {
@@ -165,12 +205,16 @@ async function readSnapshot(): Promise<Snapshot> {
   };
 }
 
-async function updateState(patch: Partial<DemoStateRow>) {
+async function updateState(walletAddress: string, patch: Partial<DemoStateRow>) {
   const supabase = getSupabaseServerClient();
+  const current = await ensureWalletState(walletAddress);
+  const normalized = walletAddress.toLowerCase();
+
   const next: DemoStateRow = {
-    ...(await ensureDefaultState()),
+    ...current,
     ...patch,
-    id: "default",
+    id: normalized,
+    wallet_address: normalized,
   };
 
   const updated = await supabase.from(STATE_TABLE).upsert(next).select("*").single<DemoStateRow>();
@@ -246,7 +290,7 @@ async function registerAgent(payload: {
   return upserted.data;
 }
 
-async function simulateDangerousAction() {
+async function simulateDangerousAction(walletAddress: string) {
   const supabase = getSupabaseServerClient();
 
   const agentResult = await supabase
@@ -303,7 +347,7 @@ async function simulateDangerousAction() {
     throw violationInsert.error;
   }
 
-  await updateState({
+  await updateState(walletAddress, {
     middleware_status: "blocked",
     middleware_reason: "private_key_exfiltration",
     last_contract_tx_hash: txHash,
@@ -317,10 +361,9 @@ async function simulateDangerousAction() {
   };
 }
 
-async function runMarketAgent() {
+async function runMarketAgent(walletAddress: string) {
   const supabase = getSupabaseServerClient();
-  const state = await ensureDefaultState();
-  const owner = state.connected_wallet ?? "0xArcOperator00000000000000000000000000000001";
+  const owner = walletAddress;
   const agent = await ensureMetaTraderRegistered(owner);
   const orchestrator = new AgentCourtOrchestrator();
   const sdkAgent = createVerifiedAgent({
@@ -417,7 +460,7 @@ async function runMarketAgent() {
     if (violationInsert.error) throw violationInsert.error;
   }
 
-  await updateState({
+  await updateState(walletAddress, {
     wallet_connected: true,
     connected_wallet: owner,
     middleware_status: blocked ? "blocked" : approval ? "needs_approval" : "allowed",
@@ -429,9 +472,21 @@ async function runMarketAgent() {
   return events;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const snapshot = await readSnapshot();
+    // Rate limit reads
+    const ip = getClientIp(request);
+    const rl = rateLimit(`read:${ip}`, RATE_LIMITS.read);
+    if (!rl.success) {
+      return NextResponse.json(
+        { ok: false, error: "Rate limit exceeded. Try again later." },
+        { status: 429 }
+      );
+    }
+
+    // GET is public — no auth required
+    const walletAddress = getAuthenticatedWallet(request);
+    const snapshot = await readSnapshot(walletAddress);
     return NextResponse.json({ ok: true, snapshot });
   } catch (error) {
     return NextResponse.json(
@@ -446,64 +501,45 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as {
-      action?: DemoAction;
-      walletAddress?: string;
-      agentAddress?: string;
-      agentName?: string;
-      category?: string;
-      description?: string;
-      policy?: string;
-      stakeAmount?: number;
-    };
-
-    const action = body.action;
-
-    if (!action) {
-      return NextResponse.json({ ok: false, error: "Missing action." }, { status: 400 });
+    // Rate limit writes
+    const ip = getClientIp(request);
+    const rl = rateLimit(`write:${ip}`, RATE_LIMITS.write);
+    if (!rl.success) {
+      return NextResponse.json(
+        { ok: false, error: "Rate limit exceeded. Try again later." },
+        { status: 429 }
+      );
     }
 
+    // Auth required for POST — wallet address comes from middleware JWT
+    const walletAddress = getAuthenticatedWallet(request);
+    if (!walletAddress) {
+      return NextResponse.json(
+        { ok: false, error: "Authentication required. Connect wallet and sign in." },
+        { status: 401 }
+      );
+    }
+
+    const rawBody = await request.json();
+
+    // Validate input with Zod
+    const parseResult = demoActionSchema.safeParse(rawBody);
+    if (!parseResult.success) {
+      return NextResponse.json(
+        { ok: false, error: parseResult.error.issues[0]?.message ?? "Invalid request." },
+        { status: 400 }
+      );
+    }
+
+    const body = parseResult.data;
+    const action = body.action;
+
     switch (action) {
-      case "connect_wallet": {
-        if (!body.walletAddress) {
-          return NextResponse.json({ ok: false, error: "Missing walletAddress." }, { status: 400 });
-        }
-
-        await updateState({
-          wallet_connected: true,
-          connected_wallet: body.walletAddress,
-          middleware_status: null,
-          middleware_reason: null,
-          last_action: "connect_wallet",
-        });
-        break;
-      }
-      case "disconnect_wallet": {
-        await updateState({
-          wallet_connected: false,
-          connected_wallet: null,
-          middleware_status: null,
-          middleware_reason: null,
-          last_contract_tx_hash: null,
-          last_action: "disconnect_wallet",
-        });
-        break;
-      }
       case "register_metatrader": {
-        const state = await ensureDefaultState();
-        const owner = body.walletAddress ?? state.connected_wallet;
-
-        if (!owner) {
-          return NextResponse.json(
-            { ok: false, error: "Connect wallet before registration." },
-            { status: 400 }
-          );
-        }
-
-        await ensureMetaTraderRegistered(owner);
-        await updateState({
+        await ensureMetaTraderRegistered(walletAddress);
+        await updateState(walletAddress, {
           wallet_connected: true,
-          connected_wallet: owner,
+          connected_wallet: walletAddress,
           middleware_status: "registered",
           middleware_reason: "MetaTrader AI staked 100 USDC",
           last_action: "register_metatrader",
@@ -511,16 +547,6 @@ export async function POST(request: Request) {
         break;
       }
       case "register_agent": {
-        const state = await ensureDefaultState();
-        const owner = body.walletAddress ?? state.connected_wallet;
-
-        if (!owner) {
-          return NextResponse.json(
-            { ok: false, error: "Connect wallet before registration." },
-            { status: 400 }
-          );
-        }
-
         if (!body.agentAddress || !body.agentName) {
           return NextResponse.json(
             { ok: false, error: "Missing agent address or name." },
@@ -528,19 +554,36 @@ export async function POST(request: Request) {
           );
         }
 
-        await registerAgent({
+        // Additional validation for register_agent fields
+        const agentParse = registerAgentSchema.safeParse({
           agentAddress: body.agentAddress,
-          name: body.agentName,
-          owner,
+          agentName: body.agentName,
           category: body.category,
           description: body.description,
           policy: body.policy,
           stakeAmount: body.stakeAmount,
         });
 
-        await updateState({
+        if (!agentParse.success) {
+          return NextResponse.json(
+            { ok: false, error: agentParse.error.issues[0]?.message ?? "Invalid agent data." },
+            { status: 400 }
+          );
+        }
+
+        await registerAgent({
+          agentAddress: body.agentAddress,
+          name: body.agentName,
+          owner: walletAddress,
+          category: body.category,
+          description: body.description,
+          policy: body.policy,
+          stakeAmount: body.stakeAmount,
+        });
+
+        await updateState(walletAddress, {
           wallet_connected: true,
-          connected_wallet: owner,
+          connected_wallet: walletAddress,
           middleware_status: "registered",
           middleware_reason: `${body.agentName} registered`,
           last_action: "register_agent",
@@ -548,7 +591,7 @@ export async function POST(request: Request) {
         break;
       }
       case "run_safe_action": {
-        await updateState({
+        await updateState(walletAddress, {
           middleware_status: "allowed",
           middleware_reason: "safe_action_allowed",
           last_action: "run_safe_action",
@@ -556,11 +599,11 @@ export async function POST(request: Request) {
         break;
       }
       case "run_market_agent": {
-        await runMarketAgent();
+        await runMarketAgent(walletAddress);
         break;
       }
       case "simulate_dangerous_action": {
-        await simulateDangerousAction();
+        await simulateDangerousAction(walletAddress);
         break;
       }
       default: {
@@ -568,7 +611,7 @@ export async function POST(request: Request) {
       }
     }
 
-    const snapshot = await readSnapshot();
+    const snapshot = await readSnapshot(walletAddress);
     return NextResponse.json({ ok: true, snapshot });
   } catch (error) {
     return NextResponse.json(

@@ -12,7 +12,7 @@ import { RecentViolations } from "@/components/recent-violations";
 import { StatCard } from "@/components/stat-card";
 import { Button } from "@/components/ui/button";
 import { Agent, AgentStatus, Severity, Violation } from "@/lib/types";
-import { AlertTriangle, ArrowRightIcon, Bot, Code2, DollarSign, Flame, ShieldCheck, Users, WalletCards } from "lucide-react";
+import { AlertTriangle, ArrowRightIcon, DollarSign, Flame, Users } from "lucide-react";
 
 type ApiSnapshot = {
   state: {
@@ -103,10 +103,9 @@ function readConfiguredContractAddress(): `0x${string}` | undefined {
 }
 
 export function DemoFlowDashboard() {
-  const { address: connectedAddress, isConnected } = useAccount();
+  const { isConnected } = useAccount();
   const [snapshot, setSnapshot] = useState<ApiSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [agentCourtAddress, setAgentCourtAddress] = useState<`0x${string}` | undefined>(undefined);
@@ -174,7 +173,6 @@ export function DemoFlowDashboard() {
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
 
@@ -184,44 +182,12 @@ export function DemoFlowDashboard() {
     };
 
     window.addEventListener("agentcourt:wallet-connected", handler);
+    window.addEventListener("agentcourt:session-changed", handler);
     return () => {
       window.removeEventListener("agentcourt:wallet-connected", handler);
+      window.removeEventListener("agentcourt:session-changed", handler);
     };
   }, [load]);
-
-  const runAction = useCallback(
-    async (
-      action:
-        | "connect_wallet"
-        | "register_metatrader"
-        | "run_safe_action"
-        | "run_market_agent"
-        | "simulate_dangerous_action"
-    ) => {
-      setActionLoading(true);
-      setError(null);
-
-      try {
-        const response = await fetch("/api/demo-flow", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action }),
-        });
-
-        const data = await response.json();
-        if (!response.ok || !data.ok) {
-          throw new Error(data.error ?? `Action failed: ${action}`);
-        }
-
-        setSnapshot(data.snapshot as ApiSnapshot);
-      } catch (caughtError) {
-        setError(caughtError instanceof Error ? caughtError.message : `Action failed: ${action}`);
-      } finally {
-        setActionLoading(false);
-      }
-    },
-    []
-  );
 
   const agents = useMemo(() => (snapshot?.agents ?? []).map(mapApiAgent), [snapshot]);
   const violations = useMemo(() => (snapshot?.violations ?? []).map(mapApiViolation), [snapshot]);
@@ -237,7 +203,7 @@ export function DemoFlowDashboard() {
         label: "Total Agents",
         value: `${totalAgents}`,
         tone: "success" as const,
-        delta: "demo flow",
+        delta: "protocol-wide",
         icon: Users,
       },
       {
@@ -262,62 +228,9 @@ export function DemoFlowDashboard() {
     ];
   }, [agents, snapshot]);
 
-  const metatrader = agents.find((agent) => agent.name === "MetaTrader AI");
-  const walletConnected = isConnected || Boolean(snapshot?.state.wallet_connected);
-
   return (
     <>
       <HeroCard />
-
-      {/* <section className="grid gap-4 lg:grid-cols-[1.35fr_0.65fr]">
-        <div className="panel overflow-hidden p-0">
-          <div className="border-b border-border bg-muted/20 p-6">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="max-w-2xl space-y-2">
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase text-primary">
-                  <ShieldCheck className="size-4" />
-                  AgentCourt SDK orchestration
-                </div>
-                <h2 className="text-2xl font-semibold leading-tight">Policy-gated agents for Arc settlement.</h2>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  The SDK wraps every agent tool call before execution, writes evidence hashes, and lets AgentCourt
-                  decide whether the action is allowed, blocked, or needs human approval.
-                </p>
-              </div>
-              <Button disabled={actionLoading || !walletConnected} onClick={() => void runAction("run_market_agent")}>
-                <Bot />
-                Run market agent
-              </Button>
-            </div>
-          </div>
-          <div className="grid gap-0 md:grid-cols-3">
-            {[
-              { label: "1. Passport", value: "Verified agent identity", icon: WalletCards },
-              { label: "2. Middleware", value: "Tool call policy check", icon: ShieldCheck },
-              { label: "3. Web3", value: "Arc/Circle action or evidence hash", icon: Code2 },
-            ].map((item) => (
-              <div key={item.label} className="border-t border-border p-5 md:border-l md:border-t-0 first:md:border-l-0">
-                <item.icon className="mb-4 size-5 text-primary" />
-                <p className="text-xs font-semibold uppercase text-muted-foreground">{item.label}</p>
-                <p className="mt-1 text-sm font-medium">{item.value}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="panel space-y-4">
-          <div>
-            <p className="text-xs font-semibold uppercase text-muted-foreground">SDK preview</p>
-            <h2 className="mt-1 text-lg font-semibold">Connect an agent</h2>
-          </div>
-          <pre className="overflow-auto rounded-lg border border-border bg-background p-4 text-xs leading-6 text-muted-foreground"><code>{`const court = new AgentCourtOrchestrator();
-
-await court.callTool(agent, "arc.transfer_usdc", {
-  amountUsd: 1250,
-  to: marketMaker
-}, executeArcTransfer);`}</code></pre>
-        </div>
-      </section> */}
 
       {/* Developer Contract Configuration Panel */}
       <section className="panel space-y-4">
@@ -359,59 +272,11 @@ await court.callTool(agent, "arc.transfer_usdc", {
         </div>
       </section>
 
-      {/* <section className="panel space-y-4">
-        <h2 className="text-lg font-semibold">Agent Simulator & Middleware Controls</h2>
-        <div className="grid gap-3 md:grid-cols-3">
-          <Button
-            disabled={actionLoading || !walletConnected}
-            onClick={() => void runAction("register_metatrader")}
-            variant="secondary"
-          >
-            <Bot />
-            Register MetaTrader AI (100 USDC)
-          </Button>
-          <Button
-            disabled={actionLoading || !metatrader}
-            onClick={() => void runAction("run_safe_action")}
-            variant="secondary"
-          >
-            <ShieldCheck />
-            Run Safe Action
-          </Button>
-          <Button
-            disabled={actionLoading || !metatrader}
-            onClick={() => void runAction("simulate_dangerous_action")}
-            variant="destructive"
-          >
-            <AlertTriangle />
-            Simulate Dangerous Action
-          </Button>
-        </div>
-
-        <div className="grid gap-2 rounded-lg border border-border bg-background/40 p-3 text-sm">
-          <p>
-            Wallet: <span className="font-mono">{connectedAddress ?? snapshot?.state.connected_wallet ?? "not connected"}</span>
-          </p>
-          <p>
-            Middleware: <span className="font-semibold">{snapshot?.state.middleware_status ?? "idle"}</span>
-            {snapshot?.state.middleware_reason ? ` (${snapshot.state.middleware_reason})` : ""}
-          </p>
-          <p>
-            Contract Tx: <span className="font-mono">{snapshot?.state.last_contract_tx_hash ?? "n/a"}</span>
-          </p>
-          <p>
-            MetaTrader AI: reputation <span className="font-semibold">{metatrader?.reputation ?? "n/a"}</span>, status{" "}
-            <span className="font-semibold">{metatrader?.status ?? "n/a"}</span>
-          </p>
-        </div>
-
-        {loading ? <p className="text-sm text-muted-foreground">Loading demo state...</p> : null}
-        {!walletConnected && !loading ? (
-          <p className="text-sm text-muted-foreground">Connect your wallet from the top bar to continue.</p>
-        ) : null}
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      </section> */}
-
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Loading protocol stats...</p>
+      ) : error ? (
+        <p className="text-sm text-destructive">{error}</p>
+      ) : null}
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (

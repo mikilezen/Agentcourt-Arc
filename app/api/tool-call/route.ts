@@ -3,16 +3,11 @@ import { NextResponse } from "next/server";
 
 import { AgentCourtOrchestrator, hashEvidence } from "@/lib/agentcourt-orchestration-sdk";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { toolCallSchema } from "@/lib/validation/schemas";
+import { rateLimit, getClientIp, RATE_LIMITS } from "@/lib/rate-limit";
 
-const STATE_TABLE = "agentcourt_demo_state";
 const AGENTS_TABLE = "agentcourt_demo_agents";
 const VIOLATIONS_TABLE = "agentcourt_demo_violations";
-
-type GatewayPassport = {
-  issuer?: string;
-  trustLevel?: "verified" | "unverified";
-  issuedAt?: string;
-};
 
 type GatewayOnChainProfile = {
   status?: string;
@@ -23,33 +18,6 @@ type GatewayOnChainProfile = {
   totalSlashed?: number;
   onChainStatus?: number | string;
   rawStatusCode?: number;
-};
-
-type GatewayAgent = {
-  id?: string;
-  name?: string;
-  owner?: string;
-  ownerAddress?: string;
-  strategy?: string;
-  passport?: GatewayPassport;
-  onChainProfile?: GatewayOnChainProfile;
-};
-
-type ToolCallRequest = {
-  agent?: GatewayAgent;
-  tool?: string;
-  args?: Record<string, unknown>;
-};
-
-type DemoStateRow = {
-  id: string;
-  connected_wallet: string | null;
-  wallet_connected: boolean;
-  middleware_status: string | null;
-  middleware_reason: string | null;
-  last_contract_tx_hash: string | null;
-  last_action: string | null;
-  updated_at?: string;
 };
 
 type DemoAgentRow = {
@@ -66,57 +34,6 @@ type DemoAgentRow = {
   status: "active" | "at-risk" | "slashed";
   updated_at?: string;
 };
-
-function defaultState(): DemoStateRow {
-  return {
-    id: "default",
-    connected_wallet: null,
-    wallet_connected: false,
-    middleware_status: null,
-    middleware_reason: null,
-    last_contract_tx_hash: null,
-    last_action: null,
-  };
-}
-
-async function ensureDefaultState() {
-  const supabase = getSupabaseServerClient();
-  const current = await supabase
-    .from(STATE_TABLE)
-    .select("*")
-    .eq("id", "default")
-    .maybeSingle<DemoStateRow>();
-
-  if (current.error) {
-    throw current.error;
-  }
-
-  if (!current.data) {
-    const inserted = await supabase.from(STATE_TABLE).upsert(defaultState()).select("*").single<DemoStateRow>();
-    if (inserted.error) {
-      throw inserted.error;
-    }
-    return inserted.data;
-  }
-
-  return current.data;
-}
-
-async function updateState(patch: Partial<DemoStateRow>) {
-  const supabase = getSupabaseServerClient();
-  const next: DemoStateRow = {
-    ...(await ensureDefaultState()),
-    ...patch,
-    id: "default",
-  };
-
-  const updated = await supabase.from(STATE_TABLE).upsert(next).select("*").single<DemoStateRow>();
-  if (updated.error) {
-    throw updated.error;
-  }
-
-  return updated.data;
-}
 
 function normalizeTrustLevel(trustLevel?: string): "verified" | "unverified" {
   return trustLevel === "verified" ? "verified" : "unverified";
@@ -186,20 +103,42 @@ function buildRiskAssessment(args?: Record<string, unknown>) {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as ToolCallRequest;
+    // Rate limit
+    const ip = getClientIp(request);
+    const rl = rateLimit(`toolcall:${ip}`, RATE_LIMITS.write);
+    if (!rl.success) {
+      return NextResponse.json(
+        { error: "Rate limit exceeded. Try again later." },
+        { status: 429 }
+      );
+    }
+
+    // Auth required — wallet address from middleware JWT
+    const walletAddress = request.headers.get("x-wallet-address");
+    if (!walletAddress) {
+      return NextResponse.json(
+        { error: "Authentication required. Connect wallet and sign in." },
+        { status: 401 }
+      );
+    }
+
+    const rawBody = await request.json();
+
+    // Validate input with Zod
+    const parseResult = toolCallSchema.safeParse(rawBody);
+    if (!parseResult.success) {
+      return NextResponse.json(
+        { error: parseResult.error.issues[0]?.message ?? "Invalid request." },
+        { status: 400 }
+      );
+    }
+
+    const body = parseResult.data;
     const agentInput = body.agent;
     const tool = body.tool;
     const args = body.args ?? {};
 
-    if (!agentInput?.id || !agentInput.name) {
-      return NextResponse.json({ error: "Missing agent identity." }, { status: 400 });
-    }
-
-    if (!tool) {
-      return NextResponse.json({ error: "Missing tool name." }, { status: 400 });
-    }
-
-    const owner = agentInput.ownerAddress ?? agentInput.owner ?? "0x0000000000000000000000000000000000000000";
+    const owner = agentInput.ownerAddress ?? agentInput.owner ?? walletAddress;
     const passport = {
       issuer: agentInput.passport?.issuer ?? "agentcourt-gateway",
       trustLevel: normalizeTrustLevel(agentInput.passport?.trustLevel),
@@ -218,9 +157,15 @@ export async function POST(request: Request) {
     const profile = agentInput.onChainProfile;
     const onChainSlashed =
       profile?.onChainStatus === 2 || profile?.onChainStatus === "Slashed" || profile?.rawStatusCode === 2;
-    const event = orchestrator.evaluate(agent, tool, args, Boolean(onChainSlashed));
+    const event = await orchestrator.evaluate(agent, tool, args, Boolean(onChainSlashed));
 
     const verdict = verdictFromDecision(event.decision);
+    if (verdict === "ALLOW" && agent.owner) {
+      const amount = extractAmount(args);
+      const currentDailySpend = await orchestrator.getDailySpend(agent.owner);
+      await orchestrator.setDailySpend(agent.owner, currentDailySpend + amount);
+    }
+
     const evidenceHash = event.evidenceHash ?? hashEvidence({ agent: agent.id, tool, args, verdict, reason: event.reason });
     const toolCallEvent = {
       id: event.id ?? `evt_${randomUUID()}`,
@@ -301,19 +246,11 @@ export async function POST(request: Request) {
       }
     }
 
-    await updateState({
-      wallet_connected: true,
-      connected_wallet: owner,
-      middleware_status: verdict === "ALLOW" ? "allowed" : verdict === "ESCALATE" ? "needs_approval" : "blocked",
-      middleware_reason: event.reason,
-      last_contract_tx_hash: evidenceHash,
-      last_action: "tool_call",
-    });
-
     return NextResponse.json(toolCallEvent);
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to evaluate tool call.";
     return NextResponse.json(
-      { error: error?.message ?? "Failed to evaluate tool call." },
+      { error: message },
       { status: 500 }
     );
   }

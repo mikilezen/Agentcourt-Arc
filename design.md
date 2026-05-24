@@ -47,6 +47,6 @@ The complete application structure showcases eight distinct views:
 The system is built to support a developer-centric workflow, optimized for integrating robust policy-as-code frameworks into complex machine learning pipelines.
 
 *   **Network:** Arc Testnet (Altar).
-*   **Chain ID:** 11155422.
+*   **Chain ID:** 5042002.
 *   **Security Focus:** Direct runtime enforcement integration, ensuring that agent actions are governed by strict, verifiable rules before execution.
 *   **Recommended Stack Context:** Interfaces effectively with environments using Python, Next.js, and TypeScript.

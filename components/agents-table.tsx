@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { AgentAvatar } from "@/components/agent-avatar";
 import { ReputationBadge } from "@/components/reputation-badge";
+import { ExternalLink } from "lucide-react";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { formatUSDC, truncateAddress } from "@/lib/format";
@@ -21,6 +22,8 @@ export function AgentsTable({ agents, limit }: { agents: Agent[]; limit?: number
               <th scope="col" className="px-4 py-3">Reputation</th>
               <th scope="col" className="px-4 py-3 text-right">Staked</th>
               <th scope="col" className="px-4 py-3 text-right">Violations</th>
+              <th scope="col" className="px-4 py-3">Status</th>
+              <th scope="col" className="px-4 py-3 text-right">Action</th>
             </tr>
           </thead>
           <tbody>
@@ -33,14 +36,14 @@ export function AgentsTable({ agents, limit }: { agents: Agent[]; limit?: number
                 <td className="px-4 py-3"><ReputationBadge score={agent.reputation} /></td>
                 <td className="px-4 py-3 text-right font-mono">{formatUSDC(agent.stakedUsdc)}</td>
                 <td className="px-4 py-3 text-right font-mono">{agent.violations}</td>
-                {/* <td className="px-4 py-3"><StatusBadge status={agent.status} /></td>
+                <td className="px-4 py-3"><StatusBadge status={agent.status} /></td>
                 <td className="px-4 py-3 text-right">
                   <Button asChild variant="ghost" size="sm">
                     <Link href={`/agents/${encodeURIComponent(agent.address)}`}>
                       View <ExternalLink className="size-4" aria-hidden="true" />
                     </Link>
                   </Button>
-                </td> */}
+                </td>
               </tr>
             ))}
           </tbody>

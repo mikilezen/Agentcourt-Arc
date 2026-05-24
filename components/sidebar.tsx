@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { arcTestnet } from "@/lib/chain";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CircleDollarSign, Download, Loader2 } from "lucide-react";
@@ -97,12 +98,9 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
     window.addEventListener("agentcourt:wallet-connected", fetchTotalStaked);
     window.addEventListener("agentcourt:contracts-deployed", fetchTotalStaked);
 
-    const interval = setInterval(fetchTotalStaked, 3000);
-
     return () => {
       window.removeEventListener("agentcourt:wallet-connected", fetchTotalStaked);
       window.removeEventListener("agentcourt:contracts-deployed", fetchTotalStaked);
-      clearInterval(interval);
     };
   }, [fetchTotalStaked]);
 
@@ -194,7 +192,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             <span className="size-2 rounded-full bg-success" />
             <p className="text-xs text-muted-foreground">Arc Testnet (Altar)</p>
           </div>
-          <p className="mt-2 font-mono text-xs text-muted-foreground">Chain ID: 11155422</p>
+          <p className="mt-2 font-mono text-xs text-muted-foreground">Chain ID: {arcTestnet.id}</p>
         </div>
 
         <div className="rounded-xl border border-border bg-card p-4">
@@ -203,10 +201,13 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             <p className="text-xs">USDC Balance</p>
           </div>
           <p className="mt-3 font-mono text-2xl font-bold">
-            {totalStaked.toFixed(2)} USDC
+            {usdcBalance.toFixed(2)} USDC
           </p>
           <p className="mt-1 font-mono text-xs text-muted-foreground">
-            ~ ${totalStaked.toFixed(1)}
+            ~ ${usdcBalance.toFixed(1)}
+          </p>
+          <p className="mt-2 font-mono text-xs text-muted-foreground">
+            Protocol Total: {totalStaked.toFixed(2)} USDC
           </p>
           <Button
             variant="secondary"

@@ -13,7 +13,7 @@ export const arcTestnet = defineChain({
   nativeCurrency: {
     name: "USDC",
     symbol: "USDC",
-    decimals: 18,
+    decimals: 6,
   },
   rpcUrls: {
     default: {

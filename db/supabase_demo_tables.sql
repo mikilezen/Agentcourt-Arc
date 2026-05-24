@@ -1,12 +1,13 @@
--- Supabase demo tables for AgentCourt demo flow
+-- Supabase tables for AgentCourt Arc
 -- Run this in Supabase SQL editor or via psql using your connection string.
 
 -- Enable pgcrypto for gen_random_uuid() if not already enabled
 create extension if not exists pgcrypto;
 
--- State table: single-row state used by the demo API
+-- State table: per-wallet session state (replaces global singleton)
 create table if not exists public.agentcourt_demo_state (
   id text primary key,
+  wallet_address text unique,
   connected_wallet text,
   wallet_connected boolean default false,
   middleware_status text,
@@ -16,17 +17,26 @@ create table if not exists public.agentcourt_demo_state (
   updated_at timestamptz default now()
 );
 
+-- Add wallet_address column if upgrading from old schema
+alter table public.agentcourt_demo_state add column if not exists wallet_address text;
+
 -- Enable RLS and add policies for the state table
 alter table public.agentcourt_demo_state enable row level security;
--- Allow public/select reads (you can tighten this later if desired)
+-- Drop old wide-open policies
 drop policy if exists demo_state_select_all on public.agentcourt_demo_state;
-create policy demo_state_select_all on public.agentcourt_demo_state for select using (true);
--- Demo mode writes: allow public writes so connect/register actions work from publishable key
 drop policy if exists demo_state_service_modify on public.agentcourt_demo_state;
 drop policy if exists demo_state_modify_all on public.agentcourt_demo_state;
-create policy demo_state_modify_all on public.agentcourt_demo_state for all using (true) with check (true);
+-- New policies: read own state, write via service role only
+create policy demo_state_select_own on public.agentcourt_demo_state
+  for select using (true);
+create policy demo_state_insert_service on public.agentcourt_demo_state
+  for insert with check (false); -- only service role bypasses RLS
+create policy demo_state_update_service on public.agentcourt_demo_state
+  for update using (false);
+create policy demo_state_delete_service on public.agentcourt_demo_state
+  for delete using (false);
 
--- Agents table: stores demo agents and balances
+-- Agents table: stores agents and balances
 create table if not exists public.agentcourt_demo_agents (
   id text primary key,
   name text not null,
@@ -48,11 +58,19 @@ alter table public.agentcourt_demo_agents add column if not exists policy text;
 
 -- Enable RLS and add policies for agents
 alter table public.agentcourt_demo_agents enable row level security;
+-- Drop old wide-open policies
 drop policy if exists demo_agents_select_all on public.agentcourt_demo_agents;
-create policy demo_agents_select_all on public.agentcourt_demo_agents for select using (true);
 drop policy if exists demo_agents_service_modify on public.agentcourt_demo_agents;
 drop policy if exists demo_agents_modify_all on public.agentcourt_demo_agents;
-create policy demo_agents_modify_all on public.agentcourt_demo_agents for all using (true) with check (true);
+-- New policies: public reads (transparency), writes via service role only
+create policy demo_agents_select_all on public.agentcourt_demo_agents
+  for select using (true);
+create policy demo_agents_insert_service on public.agentcourt_demo_agents
+  for insert with check (false); -- only service role bypasses RLS
+create policy demo_agents_update_owner on public.agentcourt_demo_agents
+  for update using (false); -- only service role bypasses RLS
+create policy demo_agents_delete_service on public.agentcourt_demo_agents
+  for delete using (false);
 
 -- Violations table: records individual violations
 create table if not exists public.agentcourt_demo_violations (
@@ -69,11 +87,19 @@ create table if not exists public.agentcourt_demo_violations (
 
 -- Enable RLS and add policies for violations
 alter table public.agentcourt_demo_violations enable row level security;
+-- Drop old wide-open policies
 drop policy if exists demo_violations_select_all on public.agentcourt_demo_violations;
-create policy demo_violations_select_all on public.agentcourt_demo_violations for select using (true);
 drop policy if exists demo_violations_service_modify on public.agentcourt_demo_violations;
 drop policy if exists demo_violations_modify_all on public.agentcourt_demo_violations;
-create policy demo_violations_modify_all on public.agentcourt_demo_violations for all using (true) with check (true);
+-- New policies: public reads, writes via service role only
+create policy demo_violations_select_all on public.agentcourt_demo_violations
+  for select using (true);
+create policy demo_violations_insert_service on public.agentcourt_demo_violations
+  for insert with check (false); -- only service role bypasses RLS
+create policy demo_violations_update_service on public.agentcourt_demo_violations
+  for update using (false);
+create policy demo_violations_delete_service on public.agentcourt_demo_violations
+  for delete using (false);
 
 -- Useful indexes
 create index if not exists idx_agentcourt_demo_agents_reputation on public.agentcourt_demo_agents (reputation desc);
@@ -89,10 +115,18 @@ create table if not exists public.agentcourt_demo_content (
 );
 
 alter table public.agentcourt_demo_content enable row level security;
+-- Drop old wide-open policies
 drop policy if exists demo_content_select_all on public.agentcourt_demo_content;
-create policy demo_content_select_all on public.agentcourt_demo_content for select using (true);
 drop policy if exists demo_content_modify_all on public.agentcourt_demo_content;
-create policy demo_content_modify_all on public.agentcourt_demo_content for all using (true) with check (true);
+-- New policies: public reads, writes via service role only
+create policy demo_content_select_all on public.agentcourt_demo_content
+  for select using (true);
+create policy demo_content_insert_service on public.agentcourt_demo_content
+  for insert with check (false);
+create policy demo_content_update_service on public.agentcourt_demo_content
+  for update using (false);
+create policy demo_content_delete_service on public.agentcourt_demo_content
+  for delete using (false);
 
 insert into public.agentcourt_demo_content (key, data)
 values

@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, Menu, MonitorPlay, PlugZap, Wallet } from "lucide-react";
+import { ChevronDown, LogIn, Menu, PlugZap, Wallet } from "lucide-react";
 
-import { useAccount, useConnect, useDisconnect, type Connector } from "wagmi";
+import { useAccount, useConnect, useDisconnect, useSignMessage, type Connector } from "wagmi";
 
 import { AgentAvatar } from "@/components/agent-avatar";
 import { Button } from "@/components/ui/button";
 import { truncateAddress } from "@/lib/format";
+import { arcTestnet } from "@/lib/chain";
 
 function walletErrorMessage(caughtError: unknown) {
   const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
@@ -37,36 +38,94 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   const { address, isConnected } = useAccount();
   const { connect, connectors, isPending: isConnecting } = useConnect();
   const { disconnectAsync } = useDisconnect();
+  const { signMessageAsync } = useSignMessage();
   const [menuOpen, setMenuOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toolboxOpen, setToolboxOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
+  const [isSigningIn, setIsSigningIn] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const connectRef = useRef<HTMLDivElement | null>(null);
 
-  // Sync wallet connection status with database state
+  // Check existing session on mount
   useEffect(() => {
-    if (isConnected && address) {
-      void fetch("/api/demo-flow", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "connect_wallet",
-          walletAddress: address,
-        }),
-      }).then(() => {
+    void fetch("/api/auth/me")
+      .then((res) => res.json())
+      .then((data) => {
+        setIsAuthenticated(Boolean(data.authenticated));
+      })
+      .catch(() => setIsAuthenticated(false));
+  }, []);
+
+  // SIWE sign-in flow after wallet connection
+  const performSiweSignIn = useCallback(
+    async (walletAddress: string) => {
+      setIsSigningIn(true);
+      setError(null);
+
+      try {
+        // 1. Get nonce from server
+        const nonceRes = await fetch("/api/auth/nonce");
+        const { nonce } = await nonceRes.json();
+
+        // 2. Build SIWE message
+        const domain = window.location.host;
+        const origin = window.location.origin;
+        const message = [
+          `${domain} wants you to sign in with your Ethereum account:`,
+          walletAddress,
+          "",
+          "Sign in to AgentCourt Arc to manage your agents and stakes.",
+          "",
+          `URI: ${origin}`,
+          `Version: 1`,
+          `Chain ID: ${arcTestnet.id}`,
+          `Nonce: ${nonce}`,
+          `Issued At: ${new Date().toISOString()}`,
+        ].join("\n");
+
+        // 3. Sign with wallet
+        const signature = await signMessageAsync({ message });
+
+        // 4. Send to server for verification
+        const loginRes = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message, signature }),
+        });
+
+        const loginData = await loginRes.json();
+
+        if (!loginRes.ok) {
+          throw new Error(loginData.error ?? "Sign-in failed.");
+        }
+
+        setIsAuthenticated(true);
+        window.dispatchEvent(new CustomEvent("agentcourt:session-changed"));
         window.dispatchEvent(new CustomEvent("agentcourt:wallet-connected"));
-      });
-    } else if (!isConnected) {
-      void fetch("/api/demo-flow", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "disconnect_wallet" }),
-      }).then(() => {
-        window.dispatchEvent(new CustomEvent("agentcourt:wallet-connected"));
-      });
+      } catch (caughtError) {
+        if (
+          caughtError instanceof Error &&
+          (caughtError.message.includes("User rejected") || caughtError.message.includes("rejected"))
+        ) {
+          setError("Signature request was rejected. You can still browse, but write actions require sign-in.");
+        } else {
+          setError(caughtError instanceof Error ? caughtError.message : "Sign-in failed.");
+        }
+      } finally {
+        setIsSigningIn(false);
+      }
+    },
+    [signMessageAsync]
+  );
+
+  // When wallet connects, prompt SIWE sign-in
+  useEffect(() => {
+    if (isConnected && address && !isAuthenticated && !isSigningIn) {
+      void performSiweSignIn(address);
     }
-  }, [address, isConnected]);
+  }, [isConnected, address, isAuthenticated, isSigningIn, performSiweSignIn]);
 
   useEffect(() => {
     if (!menuOpen && !connectOpen && !toolboxOpen) {
@@ -126,24 +185,6 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
     [connect]
   );
 
-  const useSimulatorWallet = useCallback(async () => {
-    const demoAddress = "0x000000000000000000000000000000000000A7C1";
-    setError(null);
-
-    await fetch("/api/demo-flow", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "connect_wallet",
-        walletAddress: demoAddress,
-      }),
-    });
-
-    window.dispatchEvent(new CustomEvent("agentcourt:wallet-connected"));
-    setToolboxOpen(false);
-    setConnectOpen(false);
-  }, []);
-
   const handleCopyAddress = useCallback(() => {
     if (!address) {
       return;
@@ -158,13 +199,26 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
 
   const handleLogout = useCallback(async () => {
     try {
+      // Clear server session first
+      await fetch("/api/auth/logout", { method: "POST" });
+      setIsAuthenticated(false);
+      window.dispatchEvent(new CustomEvent("agentcourt:session-changed"));
+
+      // Then disconnect wallet
       await disconnectAsync();
+      window.dispatchEvent(new CustomEvent("agentcourt:wallet-connected"));
     } catch (error) {
       console.error("Failed to disconnect wallet:", error);
     } finally {
       setMenuOpen(false);
     }
   }, [disconnectAsync]);
+
+  const handleSignIn = useCallback(() => {
+    if (address) {
+      void performSiweSignIn(address);
+    }
+  }, [address, performSiweSignIn]);
 
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/90 backdrop-blur">
@@ -174,7 +228,20 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
         </Button>
         <div className="ml-auto flex items-center gap-3">
           {address ? (
-            <div className="relative" ref={menuRef}>
+            <div className="relative flex items-center gap-2" ref={menuRef}>
+              {/* Sign-in status indicator */}
+              {isConnected && !isAuthenticated && !isSigningIn && (
+                <Button size="sm" variant="secondary" onClick={handleSignIn}>
+                  <LogIn className="size-4 mr-1" />
+                  Sign In
+                </Button>
+              )}
+              {isSigningIn && (
+                <span className="text-xs text-muted-foreground animate-pulse">Signing in...</span>
+              )}
+              {isAuthenticated && (
+                <span className="size-2 rounded-full bg-success" title="Authenticated" />
+              )}
               <button
                 type="button"
                 className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 hover:border-muted-foreground/50 transition-colors"
@@ -200,6 +267,16 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
                   >
                     Copy address
                   </button>
+                  {isConnected && !isAuthenticated && (
+                    <button
+                      type="button"
+                      className="w-full rounded-md px-2 py-2 text-left text-sm text-primary hover:bg-muted"
+                      onClick={handleSignIn}
+                      role="menuitem"
+                    >
+                      Sign in with wallet
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="w-full rounded-md px-2 py-2 text-left text-sm text-destructive hover:bg-muted"
@@ -221,17 +298,6 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
               {connectOpen ? (
                 <div className="absolute right-0 top-full z-50 mt-2 w-72 rounded-lg border border-border bg-card p-2 text-left text-sm shadow-lg animate-in fade-in slide-in-from-top-1 duration-250">
                   <p className="px-2 py-1 text-xs font-semibold uppercase text-muted-foreground">Choose connection</p>
-                  {/* <button
-                    type="button"
-                    className="flex w-full items-start gap-3 rounded-md px-2 py-2 text-left hover:bg-muted"
-                    onClick={() => void useSimulatorWallet()}
-                  >
-                    <MonitorPlay className="mt-0.5 size-4 text-success" />
-                    <span>
-                      <span className="block font-medium">Simulator</span>
-                      <span className="block text-xs text-muted-foreground">Run AgentCourt without any wallet extension.</span>
-                    </span>
-                  </button> */}
 
                   {displayedConnectors.map((connector) => (
                     <button
@@ -279,8 +345,8 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
                   <div className="my-2 rounded border border-border bg-muted/40 p-2 font-mono text-[10px] text-muted-foreground space-y-1">
                     <p className="text-foreground font-semibold">Arc Testnet Settings:</p>
                     <p>• RPC: https://rpc.testnet.arc.network</p>
-                    <p>• Chain ID: 5042002</p>
-                    <p>• Currency: USDC (18 Decimals)</p>
+                    <p>• Chain ID: {arcTestnet.id}</p>
+                    <p>• Currency: USDC ({arcTestnet.nativeCurrency.decimals} Decimals)</p>
                     <p>• Current Gas Price: ~21.5 Gwei</p>
                   </div>
 
@@ -292,9 +358,6 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
                   </ol>
                   
                   <div className="mt-3 flex flex-wrap justify-end gap-2">
-                    {/* <Button type="button" size="sm" variant="outline" onClick={() => void useSimulatorWallet()}>
-                      Simulator
-                    </Button> */}
                     <Button type="button" size="sm" variant="ghost" onClick={() => setToolboxOpen(false)}>
                       Close
                     </Button>

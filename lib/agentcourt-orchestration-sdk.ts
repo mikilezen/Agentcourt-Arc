@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export type AgentCourtPassport = {
   issuer: string;
@@ -55,13 +56,63 @@ export const AGENTCOURT_AGORA_POLICY: AgentCourtPolicy = {
 };
 
 export class AgentCourtOrchestrator {
-  private dailySpendUsd = 0;
-
   constructor(
     private readonly policy: AgentCourtPolicy = AGENTCOURT_AGORA_POLICY,
     private readonly rpcUrl: string = "https://rpc.testnet.arc.network",
     private readonly contractAddress: string = process.env.NEXT_PUBLIC_AGENT_COURT_ADDRESS || "0x1a6389aa779BD3C01B7867bB76a9B51f283f9B3a"
   ) {}
+
+  async getDailySpend(walletAddress: string): Promise<number> {
+    try {
+      const supabase = getSupabaseServerClient();
+      const { data, error } = await supabase
+        .from("agentcourt_demo_content")
+        .select("data")
+        .eq("key", `daily_spend:${walletAddress.toLowerCase()}`)
+        .maybeSingle();
+
+      if (error || !data) {
+        return 0;
+      }
+
+      const record = data.data as { dailySpend?: number; lastResetAt?: string };
+      const dailySpend = record.dailySpend ?? 0;
+      const lastResetAt = record.lastResetAt ? new Date(record.lastResetAt) : new Date(0);
+
+      const now = new Date();
+      if (
+        now.getUTCFullYear() !== lastResetAt.getUTCFullYear() ||
+        now.getUTCMonth() !== lastResetAt.getUTCMonth() ||
+        now.getUTCDate() !== lastResetAt.getUTCDate()
+      ) {
+        await this.setDailySpend(walletAddress, 0);
+        return 0;
+      }
+
+      return dailySpend;
+    } catch (err) {
+      console.error("Failed to get daily spend:", err);
+      return 0;
+    }
+  }
+
+  async setDailySpend(walletAddress: string, amount: number): Promise<void> {
+    try {
+      const supabase = getSupabaseServerClient();
+      await supabase
+        .from("agentcourt_demo_content")
+        .upsert({
+          key: `daily_spend:${walletAddress.toLowerCase()}`,
+          data: {
+            dailySpend: amount,
+            lastResetAt: new Date().toISOString(),
+          },
+          updated_at: new Date().toISOString(),
+        });
+    } catch (err) {
+      console.error("Failed to set daily spend:", err);
+    }
+  }
 
   /**
    * Low-dependency JSON-RPC client over fetch
@@ -164,29 +215,37 @@ export class AgentCourtOrchestrator {
       }
     }
 
-    const event = this.evaluate(agent, tool, args, onChainSlashed);
+    const event = await this.evaluate(agent, tool, args, onChainSlashed);
 
     if (event.decision !== "ALLOW") {
       return { event, result: null };
     }
 
     const amount = amountFromArgs(args);
-    this.dailySpendUsd += amount;
+    if (agent.owner) {
+      const currentDailySpend = await this.getDailySpend(agent.owner);
+      await this.setDailySpend(agent.owner, currentDailySpend + amount);
+    }
     const result = execute ? await execute() : { accepted: true };
     return { event, result };
   }
 
-  evaluate(
+  async evaluate(
     agent: AgentCourtAgent, 
     tool: string, 
     args: Record<string, unknown>,
     onChainSlashed: boolean = false
-  ): ToolCallEvent {
+  ): Promise<ToolCallEvent> {
     const started = performance.now();
     const amount = amountFromArgs(args);
     const sensitiveFindings = findSensitiveValues(this.policy, args);
     let decision: ToolDecision = "ALLOW";
     let reason = "Policy checks passed.";
+
+    let currentDailySpend = 0;
+    if (agent.owner) {
+      currentDailySpend = await this.getDailySpend(agent.owner);
+    }
 
     if (onChainSlashed) {
       decision = "STOP_TOOL";
@@ -203,7 +262,7 @@ export class AgentCourtOrchestrator {
     } else if (amount > this.policy.maxTradeUsd) {
       decision = "HUMAN_IN_THE_LOOP";
       reason = `Trade exceeds per-action limit of ${this.policy.maxTradeUsd} USDC.`;
-    } else if (this.dailySpendUsd + amount > this.policy.maxDailyUsd) {
+    } else if (currentDailySpend + amount > this.policy.maxDailyUsd) {
       decision = "HUMAN_IN_THE_LOOP";
       reason = `Run would exceed daily budget of ${this.policy.maxDailyUsd} USDC.`;
     } else if (this.policy.humanApprovalTools.includes(tool) && amount > 1000) {

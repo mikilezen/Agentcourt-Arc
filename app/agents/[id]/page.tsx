@@ -12,6 +12,7 @@ import {
   fetchAgentById,
   fetchViolationsByAgent,
 } from "@/lib/demo-data";
+import { AgentDetailTabs } from "@/components/agent-detail-tabs";
 
 interface AgentDetailsPageProps {
   params: Promise<{ id: string }>;
@@ -69,53 +70,11 @@ export default async function AgentDetailsPage({ params }: AgentDetailsPageProps
         </article>
       </section>
 
-      <section className="panel">
-        <div className="flex flex-wrap gap-2">
-          {["Overview", `Violations (${scopedViolations.length})`, "Transactions"].map((tab, index) => (
-            <button key={tab} className={`rounded-lg px-4 py-2 text-sm ${index === 0 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"}`}>
-              {tab}
-            </button>
-          ))}
-        </div>
-        <div className="mt-6 grid gap-6 lg:grid-cols-2">
-          <div>
-            <h2 className="text-xl font-semibold">About this agent</h2>
-            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{agent.summary}</p>
-          </div>
-          <dl className="grid gap-3 text-sm">
-            <Info label="Registered At" value={agent.registeredAt} />
-            <Info label="Last Updated" value={agent.lastUpdated} />
-            <Info label="Owner" value={agent.owner} title={agent.owner} />
-          </dl>
-        </div>
-      </section>
-
-      <section>
-        <h2 className="mb-4 text-xl font-semibold">Violations</h2>
-        {scopedViolations.length ? (
-          <ViolationsTable violations={scopedViolations} />
-        ) : (
-          <div className="panel text-center text-sm text-muted-foreground">No violations yet. This agent is behaving.</div>
-        )}
-      </section>
-
-      <section className="panel">
-        <h2 className="text-xl font-semibold">Transactions</h2>
-        <div className="mt-4 divide-y divide-border">
-          {scopedTransactions.map((tx) => (
-            <div key={tx.hash} className="grid gap-2 py-3 text-sm md:grid-cols-[1fr_120px_120px_100px]">
-              <Link href={formatExplorerUrl(tx.hash)} className="inline-flex items-center gap-1 font-mono text-primary hover:underline">
-                {truncateAddress(tx.hash, 10, 8)}
-                <ExternalLink className="size-4" aria-hidden="true" />
-              </Link>
-              <span>{tx.type}</span>
-              <span className="font-mono">{formatUSDC(tx.value)}</span>
-              <span className="text-muted-foreground">{tx.time}</span>
-            </div>
-          ))}
-          {!scopedTransactions.length ? <p className="py-4 text-sm text-muted-foreground">No transactions in the mock ledger.</p> : null}
-        </div>
-      </section>
+      <AgentDetailTabs
+        agent={agent}
+        violations={scopedViolations}
+        transactions={scopedTransactions}
+      />
     </>
   );
 }
@@ -126,14 +85,5 @@ function DetailStat({ label, value }: { label: string; value: string }) {
       <p className="text-sm text-muted-foreground">{label}</p>
       <p className="mt-3 font-mono text-3xl font-bold leading-none">{value}</p>
     </article>
-  );
-}
-
-function Info({ label, value, title }: { label: string; value: string; title?: string }) {
-  return (
-    <div className="grid gap-1 border-b border-border pb-3 last:border-0 last:pb-0">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="font-mono" title={title}>{title ? truncateAddress(value, 10, 8) : value}</dd>
-    </div>
   );
 }

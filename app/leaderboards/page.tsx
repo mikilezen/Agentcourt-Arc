@@ -1,4 +1,4 @@
-import { AgentsTable } from "@/components/agents-table";
+import { LeaderboardsClient } from "@/components/leaderboards-client";
 import { fetchAgents } from "@/lib/demo-data";
 
 const weights = [
@@ -17,15 +17,8 @@ export default async function LeaderboardsPage() {
         <h1 className="text-balance text-3xl font-semibold leading-tight">Leaderboards</h1>
         <p className="mt-2 text-sm text-muted-foreground">Top agents ranked by reputation.</p>
       </header>
-      <div className="flex flex-wrap gap-2">
-        {["By Reputation", "By Staked Amount", "By Trust Score"].map((tab, index) => (
-          <button key={tab} className={`rounded-lg px-4 py-2 text-sm ${index === 0 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"}`}>
-            {tab}
-          </button>
-        ))}
-      </div>
-      <section className="grid gap-6 lg:grid-cols-[1fr_360px]">
-        <AgentsTable agents={agents} />
+      <section className="gap-6 lg:grid-cols-[1fr_360px]">
+        <LeaderboardsClient agents={agents} />
         <aside className="panel">
           <h2 className="text-xl font-semibold">Trust Score Formula</h2>
           <div className="mt-5 flex flex-col gap-4">
