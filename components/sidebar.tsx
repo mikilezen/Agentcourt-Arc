@@ -1,14 +1,41 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { arcTestnet } from "@/lib/chain";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CircleDollarSign, Download, Loader2 } from "lucide-react";
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { formatUnits } from "viem";
 
 import { Button } from "@/components/ui/button";
 import { navItems } from "@/lib/nav-items";
 import { cn } from "@/lib/utils";
 import { AGENT_COURT_ABI } from "@/lib/agent-court";
+
+const addThousandsSeparators = (value: string) => value.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+
+const splitNumericString = (value: string) => {
+  const negative = value.startsWith("-");
+  const clean = negative ? value.slice(1) : value;
+  const [intPart = "0", fracPart = ""] = clean.split(".");
+  return { negative, intPart, fracPart };
+};
+
+const formatNumericString = (value: string, fractionDigits: number) => {
+  const { negative, intPart, fracPart } = splitNumericString(value);
+  const groupedInt = addThousandsSeparators(intPart || "0");
+  if (fractionDigits === 0) {
+    return `${negative ? "-" : ""}${groupedInt}`;
+  }
+  const fraction = fracPart.padEnd(fractionDigits, "0").slice(0, fractionDigits);
+  return `${negative ? "-" : ""}${groupedInt}.${fraction}`;
+};
+
+const formatNumericFull = (value: string) => {
+  const { negative, intPart, fracPart } = splitNumericString(value);
+  const groupedInt = addThousandsSeparators(intPart || "0");
+  const full = fracPart ? `${groupedInt}.${fracPart}` : groupedInt;
+  return `${negative ? "-" : ""}${full}`;
+};
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
@@ -51,6 +78,23 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
     },
   });
 
+  const { data: rawUsdcDecimals } = useReadContract({
+    address: usdcAddress as `0x${string}` | undefined,
+    abi: [
+      {
+        type: "function",
+        name: "decimals",
+        stateMutability: "view",
+        inputs: [],
+        outputs: [{ name: "", type: "uint8" }],
+      },
+    ],
+    functionName: "decimals",
+    query: {
+      enabled: Boolean(usdcAddress),
+    },
+  });
+
   // Read User balance of USDC
   const { data: rawBalance, refetch: refetchBalance } = useReadContract({
     address: usdcAddress as `0x${string}` | undefined,
@@ -70,7 +114,20 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
     },
   });
 
-  const usdcBalance = rawBalance ? Number(rawBalance) / 1e6 : 0;
+  const usdcDecimals = useMemo(() => {
+    if (rawUsdcDecimals === undefined) return arcTestnet.nativeCurrency.decimals;
+    const parsed = typeof rawUsdcDecimals === "number" ? rawUsdcDecimals : Number(rawUsdcDecimals);
+    return Number.isFinite(parsed) ? parsed : arcTestnet.nativeCurrency.decimals;
+  }, [rawUsdcDecimals]);
+
+  const usdcBalance = useMemo(() => {
+    const raw = formatUnits(rawBalance ?? BigInt(0), usdcDecimals);
+    return {
+      display: formatNumericString(raw, 2),
+      approx: formatNumericString(raw, 1),
+      full: formatNumericFull(raw),
+    };
+  }, [rawBalance, usdcDecimals]);
 
   const [totalStaked, setTotalStaked] = useState<number>(0);
 
@@ -108,6 +165,8 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { writeContractAsync: mintUsdc, isPending: isRequestingMint } = useWriteContract();
   const { isLoading: isWaitingForMint } = useWaitForTransactionReceipt({ hash: mintTxHash });
 
+  const mintAmount = useMemo(() => BigInt(1000) * BigInt(10) ** BigInt(usdcDecimals), [usdcDecimals]);
+
   const handleGetUsdc = useCallback(async () => {
     if (!address || !usdcAddress) {
       return;
@@ -129,13 +188,13 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           },
         ],
         functionName: "mint",
-        args: [address, BigInt(1000 * 1e6)],
+        args: [address, mintAmount],
       });
       setMintTxHash(hash);
     } catch (error) {
       console.error("Minting USDC failed:", error);
     }
-  }, [address, usdcAddress, mintUsdc]);
+  }, [address, usdcAddress, mintAmount, mintUsdc]);
 
   // Refetch balance when transaction completes
   useEffect(() => {
@@ -200,11 +259,11 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             <CircleDollarSign className="size-5" aria-hidden="true" />
             <p className="text-xs">USDC Balance</p>
           </div>
-          <p className="mt-3 font-mono text-2xl font-bold">
-            {usdcBalance.toFixed(2)} USDC
+          <p className="mt-3 truncate font-mono text-2xl font-bold" title={`${usdcBalance.full} USDC`}>
+            {usdcBalance.display} USDC
           </p>
-          <p className="mt-1 font-mono text-xs text-muted-foreground">
-            ~ ${usdcBalance.toFixed(1)}
+          <p className="mt-1 truncate font-mono text-xs text-muted-foreground" title={`$${usdcBalance.full}`}>
+            ~ ${usdcBalance.approx}
           </p>
           <p className="mt-2 font-mono text-xs text-muted-foreground">
             Protocol Total: {totalStaked.toFixed(2)} USDC

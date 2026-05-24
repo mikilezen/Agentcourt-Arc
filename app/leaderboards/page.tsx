@@ -8,6 +8,8 @@ const weights = [
   ["History", "10%", "Violation count and severity decay."],
 ];
 
+export const dynamic = "force-dynamic";
+
 export default async function LeaderboardsPage() {
   const agents = await fetchAgents();
 

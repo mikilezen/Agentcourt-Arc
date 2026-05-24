@@ -45,17 +45,25 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   const [connectOpen, setConnectOpen] = useState(false);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [sessionAddress, setSessionAddress] = useState<string | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const connectRef = useRef<HTMLDivElement | null>(null);
 
   // Check existing session on mount
   useEffect(() => {
-    void fetch("/api/auth/me")
+    setIsAuthLoading(true);
+    fetch("/api/auth/me")
       .then((res) => res.json())
       .then((data) => {
         setIsAuthenticated(Boolean(data.authenticated));
+        setSessionAddress(data.address);
       })
-      .catch(() => setIsAuthenticated(false));
+      .catch(() => {
+        setIsAuthenticated(false);
+        setSessionAddress(null);
+      })
+      .finally(() => setIsAuthLoading(false));
   }, []);
 
   // SIWE sign-in flow after wallet connection
@@ -102,6 +110,7 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
         }
 
         setIsAuthenticated(true);
+        setSessionAddress(walletAddress);
         window.dispatchEvent(new CustomEvent("agentcourt:session-changed"));
         window.dispatchEvent(new CustomEvent("agentcourt:wallet-connected"));
       } catch (caughtError) {
@@ -122,10 +131,15 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
 
   // When wallet connects, prompt SIWE sign-in
   useEffect(() => {
-    if (isConnected && address && !isAuthenticated && !isSigningIn) {
-      void performSiweSignIn(address);
+    if (!isAuthLoading && isConnected && address) {
+      const isAddrMatch = sessionAddress && address && sessionAddress.toLowerCase() === address.toLowerCase();
+      if (!isAuthenticated || !isAddrMatch) {
+        if (!isSigningIn) {
+          void performSiweSignIn(address);
+        }
+      }
     }
-  }, [isConnected, address, isAuthenticated, isSigningIn, performSiweSignIn]);
+  }, [isAuthLoading, isConnected, address, isAuthenticated, sessionAddress, isSigningIn, performSiweSignIn]);
 
   useEffect(() => {
     if (!menuOpen && !connectOpen && !toolboxOpen) {
@@ -199,9 +213,9 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
 
   const handleLogout = useCallback(async () => {
     try {
-      // Clear server session first
       await fetch("/api/auth/logout", { method: "POST" });
       setIsAuthenticated(false);
+      setSessionAddress(null);
       window.dispatchEvent(new CustomEvent("agentcourt:session-changed"));
 
       // Then disconnect wallet

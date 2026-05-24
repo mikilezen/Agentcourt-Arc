@@ -1,6 +1,8 @@
 import { ViolationsPageClient } from "@/components/violations-page-client";
 import { fetchViolations } from "@/lib/demo-data";
 
+export const dynamic = "force-dynamic";
+
 export default async function ViolationsPage() {
   const violations = await fetchViolations();
 

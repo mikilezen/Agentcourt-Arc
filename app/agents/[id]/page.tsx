@@ -18,6 +18,8 @@ interface AgentDetailsPageProps {
   params: Promise<{ id: string }>;
 }
 
+export const dynamic = "force-dynamic";
+
 export default async function AgentDetailsPage({ params }: AgentDetailsPageProps) {
   const { id } = await params;
   const agent = await fetchAgentById(id);
