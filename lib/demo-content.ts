@@ -1,6 +1,6 @@
 import { unstable_noStore } from "next/cache";
 
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { getSupabaseReadClient } from "@/lib/supabase/server";
 
 const CONTENT_TABLE = "agentcourt_demo_content";
 
@@ -35,16 +35,25 @@ function formatSupabaseError(error: SupabaseError, fallback: string): string {
 export async function fetchDemoContent<T>(key: string): Promise<T | null> {
   unstable_noStore();
 
-  const supabase = getSupabaseServerClient();
-  const result = await supabase
-    .from(CONTENT_TABLE)
-    .select("key, data")
-    .eq("key", key)
-    .maybeSingle<DemoContentRow>();
+  try {
+    const supabase = getSupabaseReadClient();
+    if (!supabase) {
+      return null;
+    }
 
-  if (result.error) {
-    throw new Error(formatSupabaseError(result.error, "Failed to load demo content."));
+    const result = await supabase
+      .from(CONTENT_TABLE)
+      .select("key, data")
+      .eq("key", key)
+      .maybeSingle<DemoContentRow>();
+
+    if (result.error) {
+      throw new Error(formatSupabaseError(result.error, "Failed to load demo content."));
+    }
+
+    return (result.data?.data as T | null) ?? null;
+  } catch (error) {
+    console.error(`Failed to fetch demo content for key ${key}:`, error);
+    return null;
   }
-
-  return (result.data?.data as T | null) ?? null;
 }

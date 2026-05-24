@@ -1,4 +1,6 @@
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { unstable_noStore } from "next/cache";
+
+import { getSupabaseReadClient } from "@/lib/supabase/server";
 import { Agent, AgentStatus, Severity, Transaction, Violation } from "@/lib/types";
 
 const AGENTS_TABLE = "agentcourt_demo_agents";
@@ -173,75 +175,119 @@ async function enrichAgentWithOnChain(agent: Agent): Promise<Agent> {
 }
 
 export async function fetchAgents(): Promise<Agent[]> {
-  const supabase = getSupabaseServerClient();
-  const result = await supabase
-    .from(AGENTS_TABLE)
-    .select("*")
-    .order("reputation", { ascending: false })
-    .returns<AgentRow[]>();
+  unstable_noStore();
 
-  if (result.error) {
-    throw result.error;
+  try {
+    const supabase = getSupabaseReadClient();
+    if (!supabase) {
+      return [];
+    }
+
+    const result = await supabase
+      .from(AGENTS_TABLE)
+      .select("*")
+      .order("reputation", { ascending: false })
+      .returns<AgentRow[]>();
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    const dbAgents = (result.data ?? []).map(mapAgentRow);
+    const enriched = await Promise.all(dbAgents.map((agent) => enrichAgentWithOnChain(agent)));
+    return enriched;
+  } catch (error) {
+    console.error("Failed to fetch agents:", error);
+    return [];
   }
-
-  const dbAgents = (result.data ?? []).map(mapAgentRow);
-  const enriched = await Promise.all(dbAgents.map((agent) => enrichAgentWithOnChain(agent)));
-  return enriched;
 }
 
 export async function fetchAgentById(id: string): Promise<Agent | null> {
-  const supabase = getSupabaseServerClient();
-  const decoded = decodeURIComponent(id);
+  unstable_noStore();
 
-  const result = await supabase
-    .from(AGENTS_TABLE)
-    .select("*")
-    .eq("id", decoded)
-    .maybeSingle<AgentRow>();
+  try {
+    const supabase = getSupabaseReadClient();
+    if (!supabase) {
+      return null;
+    }
 
-  if (result.error) {
-    throw result.error;
-  }
+    const decoded = decodeURIComponent(id);
 
-  if (!result.data) {
+    const result = await supabase
+      .from(AGENTS_TABLE)
+      .select("*")
+      .eq("id", decoded)
+      .maybeSingle<AgentRow>();
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    if (!result.data) {
+      return null;
+    }
+
+    const agent = mapAgentRow(result.data);
+    return enrichAgentWithOnChain(agent);
+  } catch (error) {
+    console.error(`Failed to fetch agent by id ${id}:`, error);
     return null;
   }
-
-  const agent = mapAgentRow(result.data);
-  return enrichAgentWithOnChain(agent);
 }
 
 export async function fetchViolations(): Promise<Violation[]> {
-  const supabase = getSupabaseServerClient();
-  const result = await supabase
-    .from(VIOLATIONS_TABLE)
-    .select("*")
-    .order("created_at", { ascending: false })
-    .returns<ViolationRow[]>();
+  unstable_noStore();
 
-  if (result.error) {
-    throw result.error;
+  try {
+    const supabase = getSupabaseReadClient();
+    if (!supabase) {
+      return [];
+    }
+
+    const result = await supabase
+      .from(VIOLATIONS_TABLE)
+      .select("*")
+      .order("created_at", { ascending: false })
+      .returns<ViolationRow[]>();
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    return (result.data ?? []).map(mapViolationRow);
+  } catch (error) {
+    console.error("Failed to fetch violations:", error);
+    return [];
   }
-
-  return (result.data ?? []).map(mapViolationRow);
 }
 
 export async function fetchViolationsByAgent(agentId: string): Promise<Violation[]> {
-  const supabase = getSupabaseServerClient();
-  const decoded = decodeURIComponent(agentId);
+  unstable_noStore();
 
-  const result = await supabase
-    .from(VIOLATIONS_TABLE)
-    .select("*")
-    .eq("agent_id", decoded)
-    .order("created_at", { ascending: false })
-    .returns<ViolationRow[]>();
+  try {
+    const supabase = getSupabaseReadClient();
+    if (!supabase) {
+      return [];
+    }
 
-  if (result.error) {
-    throw result.error;
+    const decoded = decodeURIComponent(agentId);
+
+    const result = await supabase
+      .from(VIOLATIONS_TABLE)
+      .select("*")
+      .eq("agent_id", decoded)
+      .order("created_at", { ascending: false })
+      .returns<ViolationRow[]>();
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    return (result.data ?? []).map(mapViolationRow);
+  } catch (error) {
+    console.error(`Failed to fetch violations for agent ${agentId}:`, error);
+    return [];
   }
-
-  return (result.data ?? []).map(mapViolationRow);
 }
 
 export function buildTransactionsFromViolations(violations: Violation[]): Transaction[] {

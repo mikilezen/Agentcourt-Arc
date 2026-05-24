@@ -54,10 +54,15 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   useEffect(() => {
     setIsAuthLoading(true);
     fetch("/api/auth/me")
-      .then((res) => res.json())
+      .then(async (res) => {
+        if (!res.ok || !res.headers.get("content-type")?.includes("application/json")) {
+          throw new Error("Invalid response");
+        }
+        return res.json();
+      })
       .then((data) => {
-        setIsAuthenticated(Boolean(data.authenticated));
-        setSessionAddress(data.address);
+        setIsAuthenticated(Boolean(data?.authenticated));
+        setSessionAddress(data?.address ?? null);
       })
       .catch(() => {
         setIsAuthenticated(false);
@@ -75,6 +80,9 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
       try {
         // 1. Get nonce from server
         const nonceRes = await fetch("/api/auth/nonce");
+        if (!nonceRes.ok || !nonceRes.headers.get("content-type")?.includes("application/json")) {
+          throw new Error("Failed to retrieve nonce from server.");
+        }
         const { nonce } = await nonceRes.json();
 
         // 2. Build SIWE message
@@ -103,6 +111,9 @@ export function Topbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
           body: JSON.stringify({ message, signature }),
         });
 
+        if (!loginRes.headers.get("content-type")?.includes("application/json")) {
+          throw new Error("Invalid response from login server.");
+        }
         const loginData = await loginRes.json();
 
         if (!loginRes.ok) {

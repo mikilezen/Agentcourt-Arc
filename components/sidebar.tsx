@@ -135,6 +135,9 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const fetchTotalStaked = useCallback(async () => {
     try {
       const response = await fetch("/api/demo-flow", { cache: "no-store" });
+      if (!response.ok || !response.headers.get("content-type")?.includes("application/json")) {
+        throw new Error("Invalid response");
+      }
       const data = await response.json();
       if (data?.ok && data?.snapshot?.agents) {
         const sum = data.snapshot.agents.reduce(
