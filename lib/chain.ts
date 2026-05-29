@@ -26,6 +26,29 @@ export const arcTestnet = defineChain({
       url: explorerUrl,
     },
   },
+  fees: {
+    estimateFeesPerGas: async ({ client, multiply, type, block }) => {
+      if (type === "legacy") {
+        const gasPrice = await client.getGasPrice().catch(() => 1_000_000_000n);
+        return {
+          gasPrice: multiply(gasPrice),
+        };
+      }
+
+      const baseFeePerGas = block.baseFeePerGas ?? (await client.getGasPrice().catch(() => 1_000_000_000n));
+      const maxPriorityFeePerGas = await client
+        .estimateMaxPriorityFeePerGas()
+        .catch(() => 1_000_000n);
+
+      return {
+        maxFeePerGas: multiply(baseFeePerGas) + maxPriorityFeePerGas,
+        maxPriorityFeePerGas,
+      };
+    },
+    maxPriorityFeePerGas: async ({ client }) => {
+      return client.estimateMaxPriorityFeePerGas().catch(() => 1_000_000n);
+    },
+  },
   testnet: true,
 });
 

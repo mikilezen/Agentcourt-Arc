@@ -27,7 +27,7 @@ type DemoAction =
 
 type DemoStateRow = {
   id: string;
-  wallet_address: string | null;
+  wallet_address?: string | null;
   connected_wallet: string | null;
   wallet_connected: boolean;
   middleware_status: string | null;
@@ -69,6 +69,77 @@ type Snapshot = {
   agents: DemoAgentRow[];
   violations: DemoViolationRow[];
 };
+
+let stateSupportsWalletAddressColumn: boolean | null = null;
+
+function isMissingWalletAddressColumnError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const code = "code" in error ? (error as { code?: unknown }).code : undefined;
+  const message = "message" in error ? (error as { message?: unknown }).message : undefined;
+
+  return (
+    code === "PGRST204" &&
+    typeof message === "string" &&
+    message.includes("wallet_address")
+  );
+}
+
+function toStateUpsertPayload(state: DemoStateRow) {
+  if (stateSupportsWalletAddressColumn === false) {
+    const { wallet_address: _unused, ...legacyState } = state;
+    return legacyState;
+  }
+
+  return state;
+}
+
+function normalizeStateRow(row: DemoStateRow, walletAddress: string): DemoStateRow {
+  const normalized = walletAddress.toLowerCase();
+
+  return {
+    ...row,
+    id: row.id || normalized,
+    wallet_address:
+      typeof row.wallet_address === "string" ? row.wallet_address : normalized,
+    connected_wallet:
+      typeof row.connected_wallet === "string" ? row.connected_wallet : walletAddress,
+    wallet_connected: Boolean(row.wallet_connected),
+  };
+}
+
+async function upsertStateRow(supabase: ReturnType<typeof getSupabaseServerClient>, next: DemoStateRow) {
+  const attempt = await supabase
+    .from(STATE_TABLE)
+    .upsert(toStateUpsertPayload(next))
+    .select("*")
+    .single<DemoStateRow>();
+
+  if (attempt.error && isMissingWalletAddressColumnError(attempt.error)) {
+    stateSupportsWalletAddressColumn = false;
+
+    const retry = await supabase
+      .from(STATE_TABLE)
+      .upsert(toStateUpsertPayload(next))
+      .select("*")
+      .single<DemoStateRow>();
+
+    if (retry.error) {
+      throw retry.error;
+    }
+
+    return normalizeStateRow(retry.data, next.connected_wallet ?? next.id);
+  }
+
+  if (attempt.error) {
+    throw attempt.error;
+  }
+
+  stateSupportsWalletAddressColumn = true;
+  return normalizeStateRow(attempt.data, next.connected_wallet ?? next.id);
+}
 
 function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error) {
@@ -132,20 +203,10 @@ async function ensureWalletState(walletAddress: string): Promise<DemoStateRow> {
   }
 
   if (!current.data) {
-    const inserted = await supabase
-      .from(STATE_TABLE)
-      .upsert(defaultState(walletAddress))
-      .select("*")
-      .single<DemoStateRow>();
-
-    if (inserted.error) {
-      throw inserted.error;
-    }
-
-    return inserted.data;
+    return upsertStateRow(supabase, defaultState(walletAddress));
   }
 
-  return current.data;
+  return normalizeStateRow(current.data, walletAddress);
 }
 
 async function readSnapshot(walletAddress?: string | null): Promise<Snapshot> {
@@ -217,12 +278,7 @@ async function updateState(walletAddress: string, patch: Partial<DemoStateRow>) 
     wallet_address: normalized,
   };
 
-  const updated = await supabase.from(STATE_TABLE).upsert(next).select("*").single<DemoStateRow>();
-  if (updated.error) {
-    throw updated.error;
-  }
-
-  return updated.data;
+  return upsertStateRow(supabase, next);
 }
 
 async function ensureMetaTraderRegistered(owner: string) {
@@ -268,6 +324,10 @@ async function registerAgent(payload: {
     throw existing.error;
   }
 
+  if (existing.data) {
+    throw new Error("An agent with that address already exists. Use a new agent address to register another agent.");
+  }
+
   const nextAgent: DemoAgentRow = {
     id: payload.agentAddress,
     name: payload.name,
@@ -282,12 +342,12 @@ async function registerAgent(payload: {
     status: existing.data?.status ?? "active",
   };
 
-  const upserted = await supabase.from(AGENTS_TABLE).upsert(nextAgent).select("*").single<DemoAgentRow>();
-  if (upserted.error) {
-    throw upserted.error;
+  const inserted = await supabase.from(AGENTS_TABLE).insert(nextAgent).select("*").single<DemoAgentRow>();
+  if (inserted.error) {
+    throw inserted.error;
   }
 
-  return upserted.data;
+  return inserted.data;
 }
 
 async function simulateDangerousAction(walletAddress: string) {

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { parseUnits, formatUnits } from "viem";
 
 import { Button } from "@/components/ui/button";
 import { AGENT_COURT_ABI } from "@/lib/agent-court";
@@ -42,6 +43,7 @@ export function RegisterForm({ form }: { form: RegisterFormContent }) {
   const [agentCourtAddress, setAgentCourtAddress] = useState<`0x${string}` | undefined>(undefined);
   const [approveTxHash, setApproveTxHash] = useState<`0x${string}` | undefined>(undefined);
   const [registerTxHash, setRegisterTxHash] = useState<`0x${string}` | undefined>(undefined);
+  const [allowanceConfirmed, setAllowanceConfirmed] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -99,6 +101,23 @@ export function RegisterForm({ form }: { form: RegisterFormContent }) {
     },
   });
 
+  const { data: rawUsdcDecimals } = useReadContract({
+    address: usdcAddress as `0x${string}` | undefined,
+    abi: [
+      {
+        type: "function",
+        name: "decimals",
+        stateMutability: "view",
+        inputs: [],
+        outputs: [{ name: "", type: "uint8" }],
+      },
+    ],
+    functionName: "decimals",
+    query: {
+      enabled: Boolean(usdcAddress),
+    },
+  });
+
   // Read User balance of USDC
   const { data: rawBalance, refetch: refetchBalance } = useReadContract({
     address: usdcAddress as `0x${string}` | undefined,
@@ -118,38 +137,75 @@ export function RegisterForm({ form }: { form: RegisterFormContent }) {
     },
   });
 
+  const usdcDecimals = useMemo(() => {
+    if (rawUsdcDecimals === undefined) {
+      return 6;
+    }
+
+    const parsed = typeof rawUsdcDecimals === "number" ? rawUsdcDecimals : Number(rawUsdcDecimals);
+    return Number.isFinite(parsed) ? parsed : 6;
+  }, [rawUsdcDecimals]);
+
   const hasAllowance = useMemo(() => {
     if (rawAllowance === undefined) return false;
-    const required = BigInt(Math.floor(stakeValue * 1e6));
+    const required = parseUnits(String(stakeValue || form.minimumStake), usdcDecimals);
     return rawAllowance >= required;
-  }, [rawAllowance, stakeValue]);
+  }, [rawAllowance, stakeValue, form.minimumStake, usdcDecimals]);
+
+  useEffect(() => {
+    setAllowanceConfirmed(hasAllowance);
+  }, [hasAllowance]);
 
   const hasBalance = useMemo(() => {
     if (rawBalance === undefined) return false;
-    const required = BigInt(Math.floor(stakeValue * 1e6));
+    const required = parseUnits(String(stakeValue || form.minimumStake), usdcDecimals);
     return rawBalance >= required;
-  }, [rawBalance, stakeValue]);
+  }, [rawBalance, stakeValue, form.minimumStake, usdcDecimals]);
+
+  const stakeAmountUnits = useMemo(
+    () => parseUnits(String(stakeValue || form.minimumStake), usdcDecimals),
+    [stakeValue, form.minimumStake, usdcDecimals]
+  );
+
+  const stakeAmountDisplay = useMemo(
+    () => formatUnits(stakeAmountUnits, usdcDecimals),
+    [stakeAmountUnits, usdcDecimals]
+  );
 
   // Approve & Register contract writers
   const { writeContractAsync: approveUsdc } = useWriteContract();
   const { writeContractAsync: registerAgentOnChain } = useWriteContract();
 
-  const { isLoading: isWaitingForApprove } = useWaitForTransactionReceipt({ hash: approveTxHash });
-  const { isLoading: isWaitingForRegister } = useWaitForTransactionReceipt({ hash: registerTxHash });
+  const { isLoading: isWaitingForApprove, isSuccess: isApproveSuccess } = useWaitForTransactionReceipt({
+    hash: approveTxHash,
+  });
+  const { isLoading: isWaitingForRegister, isSuccess: isRegisterSuccess } = useWaitForTransactionReceipt({
+    hash: registerTxHash,
+  });
 
   // Handle transaction states
   useEffect(() => {
-    if (approveTxHash && !isWaitingForApprove) {
-      void refetchAllowance();
-      setLoading(null);
-      setApproveTxHash(undefined);
-      setSuccess("USDC approved successfully!");
+    if (!approveTxHash || !isApproveSuccess) {
+      return;
     }
-  }, [approveTxHash, isWaitingForApprove, refetchAllowance]);
+
+    const settleApproval = async () => {
+      try {
+        await refetchAllowance();
+        setAllowanceConfirmed(true);
+        setSuccess("USDC approved successfully!");
+      } finally {
+        setLoading(null);
+        setApproveTxHash(undefined);
+      }
+    };
+
+    void settleApproval();
+  }, [approveTxHash, isApproveSuccess, refetchAllowance]);
 
   useEffect(() => {
     const handleRegisterConfirmed = async () => {
-      if (registerTxHash && !isWaitingForRegister) {
+      if (registerTxHash && isRegisterSuccess) {
         setRegisterTxHash(undefined);
         setLoading(null);
 
@@ -184,7 +240,7 @@ export function RegisterForm({ form }: { form: RegisterFormContent }) {
     };
 
     void handleRegisterConfirmed();
-  }, [registerTxHash, isWaitingForRegister, agentAddress, agentName, category, description, policy, stakeValue, address]);
+  }, [registerTxHash, isRegisterSuccess, agentAddress, agentName, category, description, policy, stakeValue, address]);
 
   const handleApprove = useCallback(async () => {
     setError(null);
@@ -228,7 +284,7 @@ export function RegisterForm({ form }: { form: RegisterFormContent }) {
           },
         ],
         functionName: "approve",
-        args: [agentCourtAddress, BigInt(Math.floor(stakeValue * 1e6))],
+        args: [agentCourtAddress, stakeAmountUnits],
       });
       setApproveTxHash(hash);
     } catch (caughtError) {
@@ -251,7 +307,7 @@ export function RegisterForm({ form }: { form: RegisterFormContent }) {
       return;
     }
 
-    if (!hasAllowance) {
+    if (!(hasAllowance || allowanceConfirmed)) {
       setError("Approve USDC before registering.");
       return;
     }
@@ -287,7 +343,7 @@ export function RegisterForm({ form }: { form: RegisterFormContent }) {
         address: agentCourtAddress,
         abi: AGENT_COURT_ABI,
         functionName: "registerAgent",
-        args: [BigInt(Math.floor(stakeValue * 1e6)), metadataURI],
+        args: [stakeAmountUnits, metadataURI],
       });
       setRegisterTxHash(hash);
     } catch (caughtError) {
@@ -299,6 +355,7 @@ export function RegisterForm({ form }: { form: RegisterFormContent }) {
     address,
     agentCourtAddress,
     hasAllowance,
+    allowanceConfirmed,
     stakeValue,
     form.minimumStake,
     form.stakeUnit,
@@ -308,6 +365,7 @@ export function RegisterForm({ form }: { form: RegisterFormContent }) {
     description,
     policy,
     registerAgentOnChain,
+    stakeAmountUnits,
   ]);
 
   return (
@@ -337,6 +395,9 @@ export function RegisterForm({ form }: { form: RegisterFormContent }) {
           onChange={(event) => setAgentAddress(event.target.value)}
           placeholder="0x..."
         />
+        <span className="mt-1 block text-xs text-muted-foreground">
+          Use the agent wallet or agent contract address, not the AgentCourt contract address.
+        </span>
       </label>
       <label className="mt-4 block">
         <span className="text-sm text-muted-foreground">Category</span>
@@ -385,6 +446,30 @@ export function RegisterForm({ form }: { form: RegisterFormContent }) {
           {stakeValue || form.minimumStake} {form.stakeUnit}
         </span>
       </p>
+
+      <div className="mt-4 rounded-lg border border-border/60 bg-muted/20 p-3 space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wider text-foreground">Transaction Preview</p>
+        <div className="grid gap-2 text-xs text-muted-foreground">
+          <div className="flex items-center justify-between gap-3">
+            <span>Approval amount</span>
+            <span className="font-mono font-semibold text-foreground">
+              {stakeAmountDisplay} {form.stakeUnit}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span>Register stake</span>
+            <span className="font-mono font-semibold text-foreground">
+              {stakeAmountDisplay} {form.stakeUnit}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span>Agent address</span>
+            <span className="font-mono font-semibold text-foreground">
+              {agentAddress.trim() || "0x..."}
+            </span>
+          </div>
+        </div>
+      </div>
       
       <div className="mt-4 rounded-lg border border-border/60 bg-muted/20 p-3 space-y-2 animate-in fade-in slide-in-from-bottom-1 duration-200">
         <p className="text-xs font-semibold text-foreground uppercase tracking-wider">Arc Network Gas Verification</p>
@@ -411,7 +496,7 @@ export function RegisterForm({ form }: { form: RegisterFormContent }) {
         <Button
           type="button"
           onClick={() => void handleApprove()}
-          disabled={loading !== null || hasAllowance || !isConnected || !agentCourtAddress}
+          disabled={loading !== null}
         >
           {loading === "approve" || isWaitingForApprove ? (
             <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -419,22 +504,24 @@ export function RegisterForm({ form }: { form: RegisterFormContent }) {
             <ShieldCheck className="size-4" aria-hidden="true" />
           )}
           {loading === "approve" || isWaitingForApprove
-            ? "Approving..."
-            : hasAllowance
-            ? "Allowance Approved"
-            : form.approveLabel}
+            ? `Approving ${stakeAmountDisplay} ${form.stakeUnit}...`
+            : hasAllowance || allowanceConfirmed
+            ? `Allowance Approved · ${stakeAmountDisplay} ${form.stakeUnit}`
+            : `${form.approveLabel} · ${stakeAmountDisplay} ${form.stakeUnit}`}
         </Button>
         <Button
           type="button"
           onClick={() => void handleRegister()}
-          disabled={loading !== null || !hasAllowance || !isConnected || !agentCourtAddress}
+          disabled={loading !== null}
         >
           {loading === "register" || isWaitingForRegister ? (
             <Loader2 className="size-4 animate-spin" aria-hidden="true" />
           ) : (
             <ShieldCheck className="size-4" aria-hidden="true" />
           )}
-          {loading === "register" || isWaitingForRegister ? "Registering..." : form.registerLabel}
+          {loading === "register" || isWaitingForRegister
+            ? `Registering ${stakeAmountDisplay} ${form.stakeUnit}...`
+            : `${form.registerLabel} · ${stakeAmountDisplay} ${form.stakeUnit}`}
         </Button>
       </div>
       {error ? <p className="mt-4 text-xs text-destructive">{error}</p> : null}

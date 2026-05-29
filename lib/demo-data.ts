@@ -33,6 +33,18 @@ type ViolationRow = {
   created_at: string | null;
 };
 
+type AgentProfileTuple = [string, string, bigint, bigint, bigint, bigint, number];
+
+type AgentProfileStruct = {
+  owner: string;
+  metadataURI: string;
+  stake: bigint;
+  reputation: bigint;
+  totalViolations: bigint;
+  totalSlashed: bigint;
+  status: number;
+};
+
 function toRelativeTime(input?: string | null): string {
   if (!input) {
     return "just now";
@@ -122,6 +134,40 @@ function isValidAddress(addr?: string): boolean {
   return addr.startsWith("0x") && addr.length === 42;
 }
 
+function parseAgentProfile(rawProfile: unknown): AgentProfileStruct | null {
+  if (Array.isArray(rawProfile) && rawProfile.length >= 7) {
+    const [owner, metadataURI, stake, reputation, totalViolations, totalSlashed, status] =
+      rawProfile as AgentProfileTuple;
+
+    return {
+      owner,
+      metadataURI,
+      stake,
+      reputation,
+      totalViolations,
+      totalSlashed,
+      status,
+    };
+  }
+
+  if (rawProfile && typeof rawProfile === "object") {
+    const profile = rawProfile as Partial<AgentProfileStruct>;
+    if (
+      typeof profile.owner === "string" &&
+      typeof profile.metadataURI === "string" &&
+      typeof profile.stake === "bigint" &&
+      typeof profile.reputation === "bigint" &&
+      typeof profile.totalViolations === "bigint" &&
+      typeof profile.totalSlashed === "bigint" &&
+      typeof profile.status === "number"
+    ) {
+      return profile as AgentProfileStruct;
+    }
+  }
+
+  return null;
+}
+
 async function enrichAgentWithOnChain(agent: Agent): Promise<Agent> {
   if (!agentCourtAddress || !isValidAddress(agentCourtAddress) || !isValidAddress(agent.owner)) {
     return agent;
@@ -144,14 +190,19 @@ async function enrichAgentWithOnChain(agent: Agent): Promise<Agent> {
     }
 
     // 2. Get profile
-    const profile = (await publicClient.readContract({
+    const rawProfile = await publicClient.readContract({
       address: cleanAgentCourt,
       abi: AGENT_COURT_ABI,
       functionName: "getAgentProfile",
       args: [agentId],
-    })) as [string, string, bigint, bigint, bigint, bigint, number];
+    });
 
-    const [owner, , stake, reputation, totalViolations, , statusNum] = profile;
+    const profile = parseAgentProfile(rawProfile);
+    if (!profile) {
+      return agent;
+    }
+
+    const { owner, stake, reputation, totalViolations, status: statusNum } = profile;
 
     let status: AgentStatus = "active";
     if (statusNum === 2) {
