@@ -4,6 +4,7 @@
     "name": "registerAgent",
     "stateMutability": "nonpayable",
     "inputs": [
+      { "name": "agentAddress", "type": "address" },
       { "name": "stakeAmount", "type": "uint256" },
       { "name": "metadataURI", "type": "string" }
     ],
@@ -76,6 +77,7 @@
     "name": "AgentRegistered",
     "inputs": [
       { "name": "agentId", "type": "uint256", "indexed": true },
+      { "name": "agentAddress", "type": "address", "indexed": true },
       { "name": "owner", "type": "address", "indexed": true },
       { "name": "metadataURI", "type": "string", "indexed": false },
       { "name": "stake", "type": "uint256", "indexed": false }
@@ -118,9 +120,9 @@
   },
   {
     "type": "function",
-    "name": "agentIdOfOwner",
+    "name": "agentIdOfAgentAddress",
     "stateMutability": "view",
-    "inputs": [{ "name": "owner", "type": "address" }],
+    "inputs": [{ "name": "agentAddress", "type": "address" }],
     "outputs": [{ "name": "", "type": "uint256" }]
   },
   {

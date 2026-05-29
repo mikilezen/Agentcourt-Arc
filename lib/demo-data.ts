@@ -169,20 +169,20 @@ function parseAgentProfile(rawProfile: unknown): AgentProfileStruct | null {
 }
 
 async function enrichAgentWithOnChain(agent: Agent): Promise<Agent> {
-  if (!agentCourtAddress || !isValidAddress(agentCourtAddress) || !isValidAddress(agent.owner)) {
+  if (!agentCourtAddress || !isValidAddress(agentCourtAddress) || !isValidAddress(agent.address)) {
     return agent;
   }
 
   try {
     const cleanAgentCourt = getAddress(agentCourtAddress);
-    const cleanOwner = getAddress(agent.owner);
+    const cleanAgentAddress = getAddress(agent.address);
 
-    // 1. Get agentId of the owner
+    // 1. Get agentId of the agent address
     const agentId = await publicClient.readContract({
       address: cleanAgentCourt,
       abi: AGENT_COURT_ABI,
-      functionName: "agentIdOfOwner",
-      args: [cleanOwner],
+      functionName: "agentIdOfAgentAddress",
+      args: [cleanAgentAddress],
     });
 
     if (agentId === BigInt(0)) {

@@ -52,6 +52,21 @@ type HookAddressState = {
   error: Error | null;
 };
 
+async function isCompatibleAgentCourtAddress(address: Address): Promise<boolean> {
+  try {
+    const contracts = AGENT_COURT_ABI.filter(
+      (item): item is Extract<(typeof AGENT_COURT_ABI)[number], { type: "function" }> =>
+        item.type === "function"
+    );
+
+    const hasAgentIdentityMethod = contracts.some((item) => item.name === "agentIdOfAgentAddress");
+    const hasRegisterMethod = contracts.some((item) => item.name === "registerAgent");
+    return hasAgentIdentityMethod && hasRegisterMethod && address.length === 42 && address.startsWith("0x");
+  } catch {
+    return false;
+  }
+}
+
 function resolveContractAddress(address?: Address): HookAddressState {
   let resolved = address;
   if (!resolved && typeof window !== "undefined") {
@@ -71,6 +86,24 @@ function resolveContractAddress(address?: Address): HookAddressState {
   }
 
   return { address: resolved, error: null };
+}
+
+export async function resolveCompatibleAgentCourtAddress(address?: Address): Promise<HookAddressState> {
+  const resolved = resolveContractAddress(address);
+  if (resolved.error || !resolved.address) {
+    return resolved;
+  }
+
+  const compatible = await isCompatibleAgentCourtAddress(resolved.address);
+  if (!compatible) {
+    return {
+      error: new Error(
+        "Configured AgentCourt address is incompatible with the current app. Redeploy the updated contract and update NEXT_PUBLIC_AGENT_COURT_ADDRESS."
+      ),
+    };
+  }
+
+  return resolved;
 }
 
 function toHash(value: string): Hash {
@@ -107,14 +140,14 @@ export function useRegisterAgent(options?: { address?: Address }) {
   const canWrite = Boolean(address);
 
   return {
-    registerAgent: async (variables: { stakeAmount: bigint; metadataURI: string }) =>
+    registerAgent: async (variables: { agentAddress: Address; stakeAmount: bigint; metadataURI: string }) =>
       canWrite
             ? write.writeContractAsync({
             address: address as Address,
             abi: AGENT_COURT_ABI,
               chainId: arcTestnet.id,
             functionName: "registerAgent",
-            args: [variables.stakeAmount, variables.metadataURI],
+            args: [variables.agentAddress, variables.stakeAmount, variables.metadataURI],
           })
         : Promise.reject(txError ?? new Error("Missing AgentCourt address.")),
     txHash: write.data,
@@ -123,7 +156,7 @@ export function useRegisterAgent(options?: { address?: Address }) {
     isError: write.isError || receipt.isError,
     error: txError,
   } satisfies TxState & {
-    registerAgent: (variables: { stakeAmount: bigint; metadataURI: string }) => Promise<Hash>;
+    registerAgent: (variables: { agentAddress: Address; stakeAmount: bigint; metadataURI: string }) => Promise<Hash>;
   };
 }
 

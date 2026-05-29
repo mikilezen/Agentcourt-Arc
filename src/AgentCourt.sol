@@ -54,11 +54,12 @@ contract AgentCourt {
     uint256 private nextAgentId = 1;
     mapping(uint256 => AgentProfile) private agents;
     mapping(uint256 => Violation[]) private agentViolations;
-    mapping(address => uint256) public agentIdOfOwner;
+    mapping(address => uint256) public agentIdOfAgentAddress;
     mapping(address => bool) public authorizedReporters;
 
     event AgentRegistered(
         uint256 indexed agentId,
+        address indexed agentAddress,
         address indexed owner,
         string metadataURI,
         uint256 stake
@@ -116,13 +117,17 @@ contract AgentCourt {
     }
 
     function registerAgent(
+        address agentAddress,
         uint256 stakeAmount,
         string calldata metadataURI
     ) external returns (uint256 agentId) {
+        if (agentAddress == address(0)) {
+            revert InvalidAddress();
+        }
         if (stakeAmount == 0) {
             revert InvalidStake();
         }
-        if (agentIdOfOwner[msg.sender] != 0) {
+        if (agentIdOfAgentAddress[agentAddress] != 0) {
             revert AgentAlreadyRegistered();
         }
 
@@ -131,7 +136,7 @@ contract AgentCourt {
         }
 
         agentId = nextAgentId++;
-        agentIdOfOwner[msg.sender] = agentId;
+        agentIdOfAgentAddress[agentAddress] = agentId;
         agents[agentId] = AgentProfile({
             owner: msg.sender,
             metadataURI: metadataURI,
@@ -142,7 +147,7 @@ contract AgentCourt {
             status: AgentStatus.Active
         });
 
-        emit AgentRegistered(agentId, msg.sender, metadataURI, stakeAmount);
+        emit AgentRegistered(agentId, agentAddress, msg.sender, metadataURI, stakeAmount);
     }
 
     function reportViolation(

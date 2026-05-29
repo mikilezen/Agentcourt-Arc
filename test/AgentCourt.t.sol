@@ -13,6 +13,8 @@ contract AgentCourtTest is Test {
     address private treasury = address(0xCAFE);
     address private reporter = address(0xBEEF);
     address private agentOwner = address(0xA11CE);
+    address private agentAddressOne = address(0x1111);
+    address private agentAddressTwo = address(0x2222);
     address private outsider = address(0xD00D);
 
     function setUp() public {
@@ -22,9 +24,9 @@ contract AgentCourtTest is Test {
     }
 
     function testRegisterAgentStoresProfileAndInitialReputation() public {
-        _registerAgent(100_000e6, "ipfs://agent-profile");
+        _registerAgent(agentAddressOne, 100_000e6, "ipfs://agent-profile");
 
-        uint256 agentId = court.agentIdOfOwner(agentOwner);
+        uint256 agentId = court.agentIdOfAgentAddress(agentAddressOne);
         AgentCourt.AgentProfile memory profile = court.getAgentProfile(agentId);
 
         assertEq(profile.owner, agentOwner);
@@ -37,8 +39,18 @@ contract AgentCourtTest is Test {
         assertEq(court.getViolationCount(agentId), 0);
     }
 
+    function testSameWalletCanRegisterMultipleAgentAddresses() public {
+        uint256 firstAgentId = _registerAgent(agentAddressOne, 100_000e6, "ipfs://agent-one");
+        uint256 secondAgentId = _registerAgent(agentAddressTwo, 150_000e6, "ipfs://agent-two");
+
+        assertEq(court.agentIdOfAgentAddress(agentAddressOne), firstAgentId);
+        assertEq(court.agentIdOfAgentAddress(agentAddressTwo), secondAgentId);
+        assertEq(court.getAgentProfile(firstAgentId).owner, agentOwner);
+        assertEq(court.getAgentProfile(secondAgentId).owner, agentOwner);
+    }
+
     function testLowSeverityReducesReputationOnly() public {
-        uint256 agentId = _registerAgent(100_000e6, "ipfs://low-severity");
+        uint256 agentId = _registerAgent(agentAddressOne, 100_000e6, "ipfs://low-severity");
         vm.warp(1_700_000_000);
 
         vm.prank(reporter);
@@ -66,7 +78,7 @@ contract AgentCourtTest is Test {
     }
 
     function testMediumSeveritySlashesFivePercentOfStake() public {
-        uint256 agentId = _registerAgent(100_000e6, "ipfs://medium-severity");
+        uint256 agentId = _registerAgent(agentAddressOne, 100_000e6, "ipfs://medium-severity");
         vm.warp(1_700_000_100);
 
         vm.prank(reporter);
@@ -91,7 +103,7 @@ contract AgentCourtTest is Test {
     }
 
     function testHighSeveritySlashesTwentyPercentOfStake() public {
-        uint256 agentId = _registerAgent(100_000e6, "ipfs://high-severity");
+        uint256 agentId = _registerAgent(agentAddressOne, 100_000e6, "ipfs://high-severity");
         vm.warp(1_700_000_200);
 
         vm.prank(reporter);
@@ -116,7 +128,7 @@ contract AgentCourtTest is Test {
     }
 
     function testOnlyAuthorizedReporterCanReportViolations() public {
-        uint256 agentId = _registerAgent(100_000e6, "ipfs://auth-check");
+        uint256 agentId = _registerAgent(agentAddressOne, 100_000e6, "ipfs://auth-check");
 
         vm.prank(outsider);
         (bool success,) = address(court).call(
@@ -133,12 +145,13 @@ contract AgentCourtTest is Test {
     }
 
     function _registerAgent(
+        address agentAddress,
         uint256 stakeAmount,
         string memory metadataURI
     ) private returns (uint256 agentId) {
         vm.prank(agentOwner);
         usdc.approve(address(court), stakeAmount);
         vm.prank(agentOwner);
-        agentId = court.registerAgent(stakeAmount, metadataURI);
+        agentId = court.registerAgent(agentAddress, stakeAmount, metadataURI);
     }
 }

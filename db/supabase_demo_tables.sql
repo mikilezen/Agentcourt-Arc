@@ -132,7 +132,7 @@ insert into public.agentcourt_demo_content (key, data)
 values
   (
     'register_page',
-    '{"title":"Register Your Agent","subtitle":"Stake USDC to activate onchain reputation for an autonomous agent.","steps":[{"title":"Stake USDC","description":"Lock collateral as a bond against agent behavior."},{"title":"Earn Reputation","description":"Build score through verified safe execution."},{"title":"Maintain Trust","description":"Violations slash stake and lower reputation."}],"form":{"defaultStake":100,"minimumStake":10,"stakeLabel":"Stake Amount","stakeUnit":"USDC","approveLabel":"Approve USDC","registerLabel":"Register Agent"}}'::jsonb
+    '{"title":"Register Your Agent","subtitle":"Stake USDC to activate onchain reputation for an autonomous agent.","steps":[{"title":"Stake USDC","description":"Lock collateral as a bond against agent behavior."},{"title":"Earn Reputation","description":"Build score through verified safe execution."},{"title":"Maintain Trust","description":"Violations slash stake and lower reputation."}],"form":{"defaultStake":0.003,"minimumStake":0.003,"stakeLabel":"Stake Amount","stakeUnit":"USDC","approveLabel":"Approve USDC","registerLabel":"Register Agent"}}'::jsonb
   ),
   (
     'docs_page',

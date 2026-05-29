@@ -53,6 +53,7 @@ forge create src/AgentCourt.sol:AgentCourt `
 ```
 
 Copy the deployed contract address from the output.
+This is the address you must use for Blockscout verification and in `NEXT_PUBLIC_AGENT_COURT_ADDRESS`. Do not use your wallet address.
 
 ## 5. Update `.env`
 
@@ -92,6 +93,8 @@ cast send 0xMockUSDCAddress "mint(address,uint256)" 0xYourWallet 1000000000 `
 `MockUSDC` uses 6 decimals, so `1000000000` is `1000 mUSDC`.
 
 ## Verify Deployment
+
+Important: the verify page only accepts the deployed `AgentCourt` contract address. If you paste an EOA wallet address like `0xafFc9Ce7274AC74aBA36dE9cA556376752060322`, verification will fail because there is no contract bytecode at that address.
 
 ```powershell
 cast call 0xAgentCourtAddress "usdc()(address)" --rpc-url $env:RPC_URL

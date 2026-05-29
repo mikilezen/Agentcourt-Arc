@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
-import { parseUnits, formatUnits } from "viem";
+import { parseUnits, formatUnits, getAddress, isAddress } from "viem";
 
 import { Button } from "@/components/ui/button";
-import { AGENT_COURT_ABI } from "@/lib/agent-court";
+import { AGENT_COURT_ABI, resolveCompatibleAgentCourtAddress } from "@/lib/agent-court";
 
 type RegisterFormContent = {
   defaultStake: number;
@@ -51,23 +51,41 @@ export function RegisterForm({ form }: { form: RegisterFormContent }) {
 
   // Resolve contract address
   useEffect(() => {
-    let resolved: `0x${string}` | undefined;
-    if (typeof window !== "undefined") {
-      const stored = window.localStorage.getItem("agentcourt_contract_address");
-      if (stored && stored.startsWith("0x")) {
-        resolved = stored as `0x${string}`;
+    let mounted = true;
+
+    void (async () => {
+      const resolved = await resolveCompatibleAgentCourtAddress();
+      if (!mounted) {
+        return;
       }
-    }
-    if (!resolved) {
-      resolved = process.env.NEXT_PUBLIC_AGENT_COURT_ADDRESS as `0x${string}` | undefined;
-    }
-    setAgentCourtAddress(resolved);
+
+      if (resolved.error) {
+        setAgentCourtAddress(undefined);
+        setError(resolved.error.message);
+        if (typeof window !== "undefined") {
+          window.localStorage.removeItem("agentcourt_contract_address");
+          window.dispatchEvent(new CustomEvent("agentcourt:contracts-deployed"));
+        }
+        return;
+      }
+
+      setAgentCourtAddress(resolved.address);
+    })();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const stakeValue = useMemo(() => {
     const parsed = Number(stake);
     return Number.isFinite(parsed) ? parsed : 0;
   }, [stake]);
+
+  const normalizedAgentAddress = useMemo(() => {
+    const trimmed = agentAddress.trim();
+    return isAddress(trimmed) ? getAddress(trimmed) : undefined;
+  }, [agentAddress]);
 
   // Read USDC address from AgentCourt
   const { data: usdcAddress } = useReadContract({
@@ -98,6 +116,24 @@ export function RegisterForm({ form }: { form: RegisterFormContent }) {
     args: address && agentCourtAddress ? [address, agentCourtAddress] : undefined,
     query: {
       enabled: Boolean(address && agentCourtAddress && usdcAddress),
+    },
+  });
+
+  const { data: existingAgentId } = useReadContract({
+    address: agentCourtAddress,
+    abi: [
+      {
+        type: "function",
+        name: "agentIdOfAgentAddress",
+        stateMutability: "view",
+        inputs: [{ name: "agentAddress", type: "address" }],
+        outputs: [{ name: "", type: "uint256" }],
+      },
+    ],
+    functionName: "agentIdOfAgentAddress",
+    args: normalizedAgentAddress ? [normalizedAgentAddress] : undefined,
+    query: {
+      enabled: Boolean(agentCourtAddress && normalizedAgentAddress),
     },
   });
 
@@ -161,6 +197,18 @@ export function RegisterForm({ form }: { form: RegisterFormContent }) {
     const required = parseUnits(String(stakeValue || form.minimumStake), usdcDecimals);
     return rawBalance >= required;
   }, [rawBalance, stakeValue, form.minimumStake, usdcDecimals]);
+
+  const isAlreadyRegistered = useMemo(() => {
+    if (existingAgentId === undefined) {
+      return false;
+    }
+
+    if (typeof existingAgentId === "bigint") {
+      return existingAgentId > BigInt(0);
+    }
+
+    return Number(existingAgentId) > 0;
+  }, [existingAgentId]);
 
   const stakeAmountUnits = useMemo(
     () => parseUnits(String(stakeValue || form.minimumStake), usdcDecimals),
@@ -307,6 +355,16 @@ export function RegisterForm({ form }: { form: RegisterFormContent }) {
       return;
     }
 
+    if (!normalizedAgentAddress) {
+      setError("Enter a valid agent address.");
+      return;
+    }
+
+    if (isAlreadyRegistered) {
+      setError("This agent address is already registered on-chain. Use a different agent address to create another agent.");
+      return;
+    }
+
     if (!(hasAllowance || allowanceConfirmed)) {
       setError("Approve USDC before registering.");
       return;
@@ -332,6 +390,7 @@ export function RegisterForm({ form }: { form: RegisterFormContent }) {
     try {
       // Serialize description, policy, category as JSON inside the metadataURI
       const metadata = {
+        agentAddress: normalizedAgentAddress,
         name: agentName.trim(),
         category: category.trim() || "General",
         description: description.trim() || "Onchain Agent",
@@ -343,7 +402,7 @@ export function RegisterForm({ form }: { form: RegisterFormContent }) {
         address: agentCourtAddress,
         abi: AGENT_COURT_ABI,
         functionName: "registerAgent",
-        args: [stakeAmountUnits, metadataURI],
+        args: [normalizedAgentAddress, stakeAmountUnits, metadataURI],
       });
       setRegisterTxHash(hash);
     } catch (caughtError) {
@@ -361,11 +420,13 @@ export function RegisterForm({ form }: { form: RegisterFormContent }) {
     form.stakeUnit,
     agentName,
     agentAddress,
+    normalizedAgentAddress,
     category,
     description,
     policy,
     registerAgentOnChain,
     stakeAmountUnits,
+    isAlreadyRegistered,
   ]);
 
   return (
@@ -396,7 +457,7 @@ export function RegisterForm({ form }: { form: RegisterFormContent }) {
           placeholder="0x..."
         />
         <span className="mt-1 block text-xs text-muted-foreground">
-          Use the agent wallet or agent contract address, not the AgentCourt contract address.
+          Use the agent wallet or agent contract address you want as the unique agent identity, not the AgentCourt contract address.
         </span>
       </label>
       <label className="mt-4 block">
@@ -465,7 +526,7 @@ export function RegisterForm({ form }: { form: RegisterFormContent }) {
           <div className="flex items-center justify-between gap-3">
             <span>Agent address</span>
             <span className="font-mono font-semibold text-foreground">
-              {agentAddress.trim() || "0x..."}
+              {normalizedAgentAddress || agentAddress.trim() || "0x..."}
             </span>
           </div>
         </div>
@@ -512,7 +573,7 @@ export function RegisterForm({ form }: { form: RegisterFormContent }) {
         <Button
           type="button"
           onClick={() => void handleRegister()}
-          disabled={loading !== null}
+          disabled={loading !== null || (Boolean(normalizedAgentAddress) && isAlreadyRegistered)}
         >
           {loading === "register" || isWaitingForRegister ? (
             <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -521,6 +582,8 @@ export function RegisterForm({ form }: { form: RegisterFormContent }) {
           )}
           {loading === "register" || isWaitingForRegister
             ? `Registering ${stakeAmountDisplay} ${form.stakeUnit}...`
+            : Boolean(normalizedAgentAddress) && isAlreadyRegistered
+            ? "Already Registered"
             : `${form.registerLabel} · ${stakeAmountDisplay} ${form.stakeUnit}`}
         </Button>
       </div>
