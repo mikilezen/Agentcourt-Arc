@@ -30,14 +30,15 @@ export const arcTestnet = defineChain({
   fees: {
     estimateFeesPerGas: async ({ client, multiply, type, block }) => {
       if (type === "legacy") {
-        const gasPrice = await getGasPrice(client).catch(() => 1_000_000_000n);
+        const gasPrice = await getGasPrice(client).catch(() => BigInt(1_000_000_000));
         return {
           gasPrice: multiply(gasPrice),
         };
       }
 
-      const baseFeePerGas = block.baseFeePerGas ?? (await getGasPrice(client).catch(() => 1_000_000_000n));
-      const maxPriorityFeePerGas = await estimateMaxPriorityFeePerGas(client).catch(() => 1_000_000n);
+      const baseFeePerGas =
+        block.baseFeePerGas ?? (await getGasPrice(client).catch(() => BigInt(1_000_000_000)));
+      const maxPriorityFeePerGas = await estimateMaxPriorityFeePerGas(client).catch(() => BigInt(1_000_000));
 
       return {
         maxFeePerGas: multiply(baseFeePerGas) + maxPriorityFeePerGas,
@@ -45,7 +46,7 @@ export const arcTestnet = defineChain({
       };
     },
     maxPriorityFeePerGas: async ({ client }) => {
-      return estimateMaxPriorityFeePerGas(client).catch(() => 1_000_000n);
+      return estimateMaxPriorityFeePerGas(client).catch(() => BigInt(1_000_000));
     },
   },
   testnet: true,
