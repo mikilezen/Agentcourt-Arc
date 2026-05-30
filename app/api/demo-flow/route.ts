@@ -335,11 +335,11 @@ async function registerAgent(payload: {
     category: payload.category ?? null,
     description: payload.description ?? null,
     policy: payload.policy ?? null,
-    reputation: existing.data?.reputation ?? 100,
-    staked_usdc: Number(payload.stakeAmount ?? existing.data?.staked_usdc ?? 0),
-    total_violations: existing.data?.total_violations ?? 0,
-    total_slashed: existing.data?.total_slashed ?? 0,
-    status: existing.data?.status ?? "active",
+    reputation: 100,
+    staked_usdc: Number(payload.stakeAmount ?? 0),
+    total_violations: 0,
+    total_slashed: 0,
+    status: "active",
   };
 
   const inserted = await supabase.from(AGENTS_TABLE).insert(nextAgent).select("*").single<DemoAgentRow>();
